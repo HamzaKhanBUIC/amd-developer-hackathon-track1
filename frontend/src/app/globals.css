@@ -1,74 +1,107 @@
-/* AMD Hackathon Zero-Token Router - Premium Design System */
 
-:root {
-  --bg-base: #09090b;
-  --bg-surface: rgba(255, 255, 255, 0.03);
-  --bg-surface-hover: rgba(255, 255, 255, 0.08);
-  --border-subtle: rgba(255, 255, 255, 0.1);
-  --border-focus: rgba(255, 255, 255, 0.3);
-  
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  
-  --accent-amd: #ff0000;
-  --accent-amd-glow: rgba(255, 0, 0, 0.15);
-  
-  --layer-1-color: #3b82f6; /* Semantic Layer - Blue */
-  --layer-2-color: #f59e0b; /* XGBoost Layer - Orange */
-  
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 24px;
-  --radius-full: 9999px;
-  
-  --transition-fast: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  --transition-fluid: 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+@import "tailwindcss";
+
+@theme {
+  --color-tertiary-fixed-dim: #69d8d4;
+  --color-on-tertiary-fixed: #00201f;
+  --color-tertiary-container: #24a09d;
+  --color-tertiary-fixed: #87f4f0;
+  --color-on-surface-variant: #e4beba;
+  --color-on-error-container: #ffdad6;
+  --color-surface-tint: #ffb3ad;
+  --color-surface: #1e100e;
+  --color-secondary-container: #0566d9;
+  --color-surface-container-high: #372624;
+  --color-surface-container-low: #271816;
+  --color-on-tertiary: #003736;
+  --color-tertiary: #69d8d4;
+  --color-surface-bright: #473533;
+  --color-on-secondary-fixed: #001a42;
+  --color-secondary-fixed: #d8e2ff;
+  --color-inverse-on-surface: #3e2c2b;
+  --color-on-secondary: #002e6a;
+  --color-on-tertiary-fixed-variant: #00504e;
+  --color-primary-fixed-dim: #ffb3ad;
+  --color-on-primary-fixed: #410004;
+  --color-on-primary-container: #5c0008;
+  --color-on-surface: #f9dcd9;
+  --color-on-secondary-container: #e6ecff;
+  --color-on-error: #690005;
+  --color-primary-fixed: #ffdad7;
+  --color-surface-container-highest: #42302f;
+  --color-on-primary-fixed-variant: #930013;
+  --color-surface-variant: #42302f;
+  --color-primary-container: #ff5451;
+  --color-secondary-fixed-dim: #adc6ff;
+  --color-surface-container-lowest: #180a09;
+  --color-on-tertiary-container: #00302e;
+  --color-surface-container: #2c1c1a;
+  --color-background: #020617;
+  --color-outline-variant: #5b403e;
+  --color-inverse-surface: #f9dcd9;
+  --color-inverse-primary: #b91a24;
+  --color-primary: #ffb3ad;
+  --color-outline: #ab8986;
+  --color-error-container: #93000a;
+  --color-surface-dim: #1e100e;
+  --color-on-secondary-fixed-variant: #004395;
+  --color-secondary: #adc6ff;
+  --color-on-background: #f9dcd9;
+  --color-on-primary: #68000a;
+  --color-error: #ffb4ab;
+  --color-amd-red: #EF4444;
+  --color-amd-blue: #3B82F6;
+
+  --spacing-margin-mobile: 16px;
+  --spacing-stack-lg: 32px;
+  --spacing-unit: 4px;
+  --spacing-stack-sm: 8px;
+  --spacing-margin-desktop: 40px;
+  --spacing-container-max: 1440px;
+  --spacing-gutter: 24px;
+  --spacing-stack-md: 16px;
+
+  --font-display-lg: 'Inter';
+  --font-label-sm: 'Geist';
+  --font-body-md: 'Inter';
+  --font-body-lg: 'Inter';
+  --font-headline-md: 'Inter';
+  --font-code-md: 'Geist';
+
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
 
-body {
-  background-color: var(--bg-base);
-  color: var(--text-primary);
-  font-family: var(--font-geist-sans), sans-serif;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow-x: hidden;
-  background-image: 
-    radial-gradient(circle at 15% 50%, var(--accent-amd-glow), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.05), transparent 25%);
-}
-
-h1, h2, h3, h4, h5, h6 {
-  font-weight: 500;
-  letter-spacing: -0.02em;
-}
-
-.glass-panel {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: var(--radius-lg);
-}
-
-/* Base Animations */
-@keyframes slideUpFade {
-  from {
-    opacity: 0;
-    transform: translateY(16px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.animate-enter {
-  animation: slideUpFade var(--transition-fluid) forwards;
-}
+        body {
+            background-color: #020617;
+            color: #f9dcd9;
+            overflow: hidden;
+        }
+        .glass {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .neon-red {
+            filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.4));
+        }
+        .neon-blue {
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(239, 68, 68, 0.3);
+            border-radius: 10px;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.6)); }
+        }
+        .animate-pulse-glow {
+            animation: pulse-glow 3s infinite ease-in-out;
+        }
+    
