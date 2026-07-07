@@ -1,0 +1,20 @@
+# AI Configs
+AGENTS.md
+AGENT_RULES.md
+GEMINI.md
+Claude.md
+.agents/
+skills.json
+
+# Clutter
+.DS_Store
+.vscode/
+
+# Secrets
+.env
+*.pem
+
+# Build
+node_modules/
+__pycache__/
+*.pyc
