@@ -24,7 +24,7 @@ To avoid merge conflicts and blocked tasks, we will execute in three parallel bu
 ## Pull Request & Code Review Protocol
 
 **Do NOT merge your own PRs.**
-- The **Lead (Hamza) and AI (Antigravity)** will be acting as the central gatekeepers for the `main` branch.
+- The **Lead (Hamza) ** will be acting as the central gatekeepers for the `main` branch.
 - When you submit a PR, we will use our automated and manual review skills (such as `code-reviewer`, `vibe-code-auditor`, and `git-pr-review`) to verify:
   1. No "AI Slop" or generic code was introduced.
   2. The code adheres strictly to the `PROJECT_DNA.md` spec.
