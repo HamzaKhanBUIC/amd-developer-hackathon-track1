@@ -11,7 +11,7 @@ Our goal is to build an AI agent that dynamically routes incoming queries to the
 To make collaboration seamless, the project is split into distinct frontend and backend environments. **Please read the guide specific to your role before you start coding!**
 
 ### 🎨 Frontend Team
-We are building a highly interactive, "Awwwards-style" premium dashboard using Next.js, Framer Motion, and Tailwind CSS.
+We are building a highly interactive, dashboard using Next.js, Framer Motion, and Tailwind CSS.
 👉 **[Read the Frontend Guide & Tasks](./docs/FRONTEND_TASKS.md)**
 
 ### ⚙️ Backend Team
