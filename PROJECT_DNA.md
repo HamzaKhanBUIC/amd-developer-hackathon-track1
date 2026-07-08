@@ -1,38 +1,23 @@
-# AMD Hackathon Track 1: Astonishing Routing Agent
+# Project DNA: AMD Zero-Token API Router
 
-## Goal
-Build a mathematically superior, visually astonishing AI routing agent that dynamically selects the cheapest Fireworks AI model while spending exactly 0 LLM inference tokens on the routing decision itself.
+## Core Identity
+This project is built to win Track 1 of the AMD Developer Hackathon. The primary objective is to implement a robust query routing mechanism that maximizes output accuracy while minimizing token consumption on the Fireworks AI API.
 
-## Technical Architecture (Finalized)
+## Technical Strategy
+- **Zero-Token Local Execution**: We prioritize running a quantized Qwen 1.5B model on the provided 2vCPU / 4GB RAM environment for all simple tasks.
+- **Dynamic API Routing**: When forced to use the Fireworks API, we dynamically read the allowed models from `ALLOWED_MODELS` and route to the most cost-effective model (e.g. `llama-v3p1-8b-instruct`) unless the prompt specifically demands a coding model or deep reasoning.
+- **Semantic Caching**: All outputs are cached using `all-MiniLM-L6-v2` embeddings, allowing duplicate tasks to cost zero API tokens and zero local inference time.
+- **Fail-Safe Fallbacks**: If the Fireworks API returns a 404 or rate-limit error, we instantly fallback to a smaller API model, and if that fails, we fallback to the local Qwen model. This ensures a 100% completion rate.
 
-We are implementing the **Zero-Token Semantic Pipeline (Tiers 1 & 2)**:
+## Status
+- [x] Implement Semantic Router logic
+- [x] Configure Local Model execution environment
+- [x] Setup Fireworks API routing
+- [x] Build fail-safe exception handling for 404s and rate-limits
+- [x] Update documentation to reflect Hackathon rule compliance
+- [ ] Finalize React Frontend dashboard to visualize routing decisions
 
-1. **Layer 1: Semantic Embedding Router (0 tokens, ~100ms)**
-   - **Mechanism:** Convert incoming prompts into embeddings (using a fast, free local embedding model or extremely cheap API) and use Cosine Similarity against a vector store of predefined "intents" (e.g., greetings, basic translation).
-   - **Action:** If similarity > 0.85, route immediately to Gemma 2B or Llama 3 8B.
-2. **Layer 2: XGBoost Predictive Classifier (0 LLM tokens, ~5ms)**
-   - **Mechanism:** If the prompt fails Layer 1, we extract prompt features (length, complexity markers) and run them through a trained XGBoost ML classifier.
-   - **Data Source:** We will train the classifier using the open-source **Chatbot Arena preference dataset** (as used by RouteLLM) to accurately predict if a cheap model will suffice.
-   - **Action:** Route to the cheapest capable model based on the ML prediction.
-
-## UI / Frontend Strategy
-- **Framework:** Next.js with TypeScript.
-- **Styling:** Vanilla CSS with CSS Modules. We strictly refuse "AI slop" (generic Tailwind layouts). 
-- **Design Language:** We will use Stitch-inspired, premium, sleek dark mode aesthetics featuring glassmorphism, dynamic micro-animations, and modern typography (e.g., Inter or Outfit). 
-- **Demo Layout:** A split-screen chat interface. The user sees the prompt, and the UI visually traces the routing decision (Semantic Match vs ML Classifier), showing real-time token/cost savings compared to a baseline 70B model.
-
-## File Structure
-```
-/frontend
-  - next.js source
-  - styles/ (Premium Vanilla CSS)
-/backend
-  - main.py (FastAPI)
-  - semantic_router.py (Layer 1)
-  - xgboost_router.py (Layer 2)
-  - train_classifier.py (Data ingestion)
-/docs
-  - HACKATHON_SPRINT.md
-PROJECT_DNA.md
-.gitignore
-```
+## Important Rules
+- Local models are legal and cost 0 tokens. They MUST be heavily utilized.
+- All code must run strictly within 4GB of RAM.
+- Do NOT use hardcoded API model names; always fall back on parsing the `ALLOWED_MODELS` environment variable.

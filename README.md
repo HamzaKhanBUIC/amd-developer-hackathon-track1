@@ -1,106 +1,37 @@
-# True Zero-Token Hybrid Router ⚡
+# AMD Developer Hackathon: Zero-Token API Router
 
-> **AMD Developer Hackathon ACT II — Track 1**  
-> A token-efficient LLM routing agent that guarantees mathematical cost efficiency while protecting accuracy through a novel **4-Layer Intelligence Cascade**.
+This project is an advanced AI Agent Router built for **Track 1** of the AMD Developer Hackathon.
 
----
+Our goal is simple: **Maximize Accuracy while Minimizing Token Cost**. 
+We achieve this through a highly optimized, 4-layer routing architecture that aggressively answers tasks using zero-token local execution whenever possible, and only escalates to expensive API models when strictly necessary.
 
-## 🏆 Why This Router Wins (The "Zero-Token" Architecture)
+## The 4-Layer Routing Architecture
 
-Most routing agents spend API tokens just to *decide* where to route a prompt, or use slow, resource-heavy LLMs for classification. 
+1. **Layer 1: Semantic Caching (MiniLM)**
+   - **Cost:** $0.00
+   - Before any processing, the prompt is embedded using `all-MiniLM-L6-v2`. If the exact semantic meaning exists in our cache (e.g. `> 0.99` cosine similarity), we instantly return the cached answer.
 
-Our system uses an entirely different approach optimized strictly for the **4GB RAM, 2vCPU, Headless Batch** constraint:
+2. **Layer 2: Local Heuristics (Qwen 1.5B)**
+   - **Cost:** $0.00
+   - We run a small XGBoost classifier over the embeddings to detect "easy" intents (e.g., greetings, basic math, definitions).
+   - If classified as easy, the task is routed to a local **Qwen 2.5 1.5B GGUF** model running on the CPU. This gives us high-quality answers for zero Fireworks API tokens.
 
-1. **Zero API Tokens Spent on Routing:** Our router uses an embedded `MiniLM` model + `XGBoost` classifier to make routing decisions in **<5ms** on the CPU. It costs $0.00 to route.
-2. **True Zero-Token Local Inference:** If a task is classified as "Trivial/Easy", it is instantly processed by an embedded, highly-quantized **Qwen 2.5 1.5B Q4_K_M** local model using `llama.cpp`. Total cost: $0.00.
-3. **In-Memory Semantic Cache:** We implemented a zero-overhead LRU semantic cache (cosine similarity threshold > 0.99) that intercepts duplicate or near-identical prompts *before* they ever reach an LLM.
-4. **AMD ROCm Ready:** Our container explicitly checks for PyTorch HIP/ROCm compatibility, designed to leverage AMD Instinct GPUs when available, while safely gracefully falling back to CPU for the constraints of the grading environment.
+3. **Layer 3: Smart Fireworks Routing (Llama 3.1 8B / Qwen 2.5 32B / Llama 3.1 70B)**
+   - **Cost:** API rates
+   - If the task is hard, we look for keywords in the prompt. Code tasks go to `qwen2p5-coder-32b`, complex reasoning goes to `llama-v3p1-70b`, and everything else goes to the fast `llama-v3p1-8b-instruct`.
 
----
+4. **Layer 4: Bulletproof Fallbacks**
+   - **Cost:** Varies (often $0.00 if failing back locally)
+   - If an API request fails or is rate-limited, the system automatically falls back to a cheaper API model. If that fails, it executes a desperate fallback to the local Qwen model to ensure we NEVER fail a task due to network errors.
 
-## 📊 Benchmarks vs Competitors
+## Current Project Status
+- **Backend:** 100% Complete. The routing engine, semantic cache, and fallback logic are fully implemented in Python and tested to be robust against 404s and rate limits.
+- **Models:** Configured to read `ALLOWED_MODELS` from the environment dynamically as required by the hackathon organizers.
+- **Frontend:** Dashboard skeleton exists, pending final polish to visualize routing decisions and cost savings.
 
-Based on our stress testing on a standard mix of queries (Factual, Code, Math, Summarization):
+## How to Run
 
-| System Type | Local Model | Routing Intelligence | Token Savings |
-|---|:-:|:-:|:-:|
-| Naive Router (Always API) | ❌ | None | 0% |
-| Simple Keyword Router | ❌ | Regex / If-statements | ~40% |
-| Binary Cloud/Local Router | ✅ | Local LLM Confidence | ~50% |
-| **Our 4-Layer Hybrid** | ✅ | **XGBoost + Embeddings** | **84%** |
-
-> **Accuracy Gate Protection:** To ensure we don't fail the hackathon's Accuracy Gate, we implemented a strict conservatism threshold. Our local model is ONLY dispatched for tasks that score highly against a vector space of strictly trivial intents (e.g., greetings, short facts). Ambiguous or complex tasks are safely escalated to the Fireworks API.
-
----
-
-## 🧠 The 4-Layer Intelligence Cascade
-
-Our system routes dynamically through 4 stages:
-
-```mermaid
-flowchart TD
-    A[Input JSON Tasks] --> B{Layer 1: Semantic Cache}
-    B -- Cosine Similarity > 0.99 --> C((CACHE HIT: $0.00))
-    B -- Miss --> D{Layer 2: Semantic Router}
-    
-    D -- Trivial Intent > 0.92 --> E((Local Qwen 1.5B: $0.00))
-    D -- Complex --> F{Layer 3: XGBoost ML}
-    
-    F -- Easy & > 0.6 --> E
-    F -- Hard / Math --> G{Layer 4: Fireworks API}
-    
-    G -- Code Tasks --> H[Kimi Code API]
-    G -- General Medium --> I[Gemma 4 26B API]
-    G -- Reasoning / Logic --> J[Gemma 4 31B API]
-    
-    C --> Z[results.json]
-    E --> Z
-    H --> Z
-    I --> Z
-    J --> Z
-```
-
----
-
-## 🔍 Explainability & Traceability 
-
-We believe judges need to see *why* a router made a decision. Our system outputs a detailed `routing` metadata block into `results.json` for every single task.
-
-**Example Output:**
-```json
-{
-  "task_id": "9a7f",
-  "answer": "The capital of France is Paris.",
-  "routing": {
-    "model": "local",
-    "layer": "xgboost-easy",
-    "cost_usd": 0.0
-  }
-}
-```
-
----
-
-## 🚀 Setup & Execution (Headless Batch)
-
-Designed precisely for the grading harness. 
-
-### 1. Build the Docker Image
-```bash
-docker build -t amd-track1-router .
-```
-*(Note: The XGBoost model is trained securely **during** the Docker build step to ensure 100% Linux environment compatibility.)*
-
-### 2. Run the Batch Processor
-```bash
-docker run --rm \
-  -e ALLOWED_MODELS="accounts/fireworks/models/gemma-4-26b-a4b-it,accounts/fireworks/models/gemma-4-31b-it,accounts/fireworks/models/kimi-k2p7-code" \
-  -v $(pwd)/input:/input \
-  -v $(pwd)/output:/output \
-  amd-track1-router
-```
-
-### Constraints Handled:
-- **4GB RAM:** Concurrency restricted to `asyncio.Semaphore(1)` for local inference.
-- **10-Min Timeout:** API tasks bypass the local lock and execute concurrently (`Semaphore(50)`).
-- **No Web Server:** Executes standard I/O batch reading and exits `0`.
+1. Clone this repository.
+2. Ensure you have the `qwen2.5-1.5b-instruct-q4_k_m.gguf` model in the root directory.
+3. Set your `FIREWORKS_API_KEY`.
+4. Run `python backend/agent.py` to start the router on your `tasks.json`.
