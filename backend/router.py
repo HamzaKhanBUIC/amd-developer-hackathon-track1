@@ -78,9 +78,13 @@ def route_query(prompt: str) -> tuple[str, str]:
         # Simple heuristic to detect if the hard prompt requires the specific code model
         # In a real scenario, this could be a 3-class XGBoost model (Easy, Hard, Code)
         if prediction == 1:
-            if any(keyword in prompt.lower() for keyword in ["code", "python", "javascript", "rust", "c++", "debug", "function"]):
+            prompt_lower = prompt.lower()
+            if any(keyword in prompt_lower for keyword in ["code", "python", "javascript", "rust", "c++", "debug", "function"]):
                 return (CODE_MODEL, "xgboost-code")
-            return (EXPENSIVE_MODEL, "xgboost-reasoning")
+            elif any(keyword in prompt_lower for keyword in ["math", "logic", "puzzle", "theorem", "prove", "calculate", "equation"]):
+                return (EXPENSIVE_MODEL, "xgboost-reasoning")
+            else:
+                return (CHEAP_MODEL, "xgboost-medium")
         else:
             return (LOCAL_MODEL_KEY, "xgboost-easy")
     
