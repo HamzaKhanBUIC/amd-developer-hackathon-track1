@@ -4,17 +4,16 @@ This document is the **master guide for the backend developer**. It explains the
 
 ---
 
-## 🏗️ 1. Current State & Architecture
+## 🏗️ 1. Current State & Architecture (The True Hybrid Zero-Token Router)
 
-The backend is built with **Python 3**, **FastAPI**, **SentenceTransformers**, and **XGBoost**. It acts as a highly efficient semantic routing layer that intercepts LLM requests and decides the cheapest way to fulfill them.
+The backend is undergoing a massive pivot based on new Track 1 grading rules. We must run a headless batch script with a strict 4GB RAM limit and a 10-minute timeout.
+Our architecture relies on **True Zero-Token Routing**:
+*   **Tier 1 (Easy Tasks):** Answered entirely locally using a 4-bit quantized `Qwen 2.5 1.5B` model via `llama-cpp-python`. Because it's local, we score 0 tokens (the best possible score).
+*   **Tier 2 (Hard Tasks):** Fired asynchronously to the Fireworks API using `asyncio` to prevent the 10-minute timeout.
 
 ### Important Files
-1. **`main.py`**: The FastAPI server entry point. It defines the `/api/route` POST endpoint.
-2. **`router.py`**: The core intelligence. It contains `route_query()`, which uses a 2-tier funnel:
-   * **Tier 1 (Semantic)**: Uses `all-MiniLM-L6-v2` to run a local cosine similarity check against known easy intents. Costs 0 tokens.
-   * **Tier 2 (ML Classifier)**: Uses a trained `XGBoost` model to predict if the query needs the cheap `26b` model, the heavy `31b` reasoning model, or the specific `kimi` code model. Costs 0 tokens.
-3. **`generate_dataset.py` & `train_model.py`**: Scripts you must run to synthesize data across the 8 required hackathon categories and generate the `.json` weights for the XGBoost model.
-4. **`fireworks_client.py`**: Handles the actual async API calls to the Fireworks AI API.
+1. **`agent.py` [NEW]**: The headless script the grading harness will run. It reads `/input/tasks.json` and writes `/output/results.json`.
+2. **`main.py` & `fireworks_client.py`**: Kept alive *only* for the local frontend demo/pitch video. They must read `ALLOWED_MODELS` and `FIREWORKS_BASE_URL` from the environment.
 
 ---
 
@@ -22,20 +21,12 @@ The backend is built with **Python 3**, **FastAPI**, **SentenceTransformers**, a
 
 Your primary goal is to **finalize the API configuration so the Next.js frontend can communicate with it flawlessly, and ensure the local ML routing models are properly generated.**
 
-### Task A: Fix CORS (Cross-Origin Resource Sharing)
-Currently, the frontend (running on `http://localhost:3000`) will be blocked by the browser when it tries to talk to FastAPI (running on `http://localhost:8000`).
-1. Open `main.py`.
-2. Import the CORS middleware: `from fastapi.middleware.cors import CORSMiddleware`
-3. Add the middleware to the `app` instance:
-   ```python
-   app.add_middleware(
-       CORSMiddleware,
-       allow_origins=["http://localhost:3000"],
-       allow_credentials=True,
-       allow_methods=["*"],
-       allow_headers=["*"],
-   )
-   ```
+### Task A: Build the Headless Batch Processor (`agent.py`)
+The grading harness will not use the FastAPI server. You must create `agent.py`:
+1. Read the array of tasks from `/input/tasks.json`.
+2. Process them concurrently using `asyncio.gather()`. 
+3. If the task is routed to the local `Qwen 1.5B` model, wrap the execution in `asyncio.to_thread()` and use an `asyncio.Semaphore(1)` so we don't crash the 2 vCPUs or exceed 4GB RAM.
+4. Write the results to `/output/results.json` and exit with code 0.
 
 ### Task B: Generate Data & Train the XGBoost Router
 The `router.py` file expects `xgboost_router.json` to exist in the root folder, otherwise it defaults to the expensive 31B fallback model. (Note: TF-IDF has been fully removed, we now pipe dense vectors directly).
@@ -45,22 +36,10 @@ The `router.py` file expects `xgboost_router.json` to exist in the root folder, 
 4. Run the training script: `python train_model.py`.
 5. Verify that the weight file (`xgboost_router.json`) has been generated in the folder.
 
-### Task C: Implement Chat History / Context (Important)
-Right now, the `QueryRequest` Pydantic model in `main.py` only accepts a single `prompt: str`. This means the chatbot cannot remember previous messages in the conversation.
-1. Modify `QueryRequest` in `main.py` to accept an array of messages:
-   ```python
-   class Message(BaseModel):
-       role: str
-       content: str
-       
-   class QueryRequest(BaseModel):
-       messages: list[Message]
-   ```
-2. Update the `fireworks_client.py` so that it passes the entire array of messages to the Fireworks API, rather than just a single prompt string. (The `router.py` can just extract the `content` of the *last* message to determine routing).
-
-### Task D: Error Handling
-* Ensure that if the Fireworks API key is missing or invalid, the backend returns a clear `HTTPException (500)` rather than crashing the server.
-* Ensure that if the ML models fail to load, the server logs a warning but continues running by defaulting to the fallback model (this is partially implemented in `router.py`, just verify it).
+### Task C: Environment Variables (Strict Mandate)
+You cannot hardcode the API URL or Models anymore.
+1. Update `router.py` to parse `os.environ["ALLOWED_MODELS"]` and map them to our internal variables dynamically.
+2. Update `fireworks_client.py` to use `os.environ["FIREWORKS_BASE_URL"]` as the Base URL, and `os.environ["FIREWORKS_API_KEY"]`. Do not use a `.env` file fallback in the Docker container.
 
 ---
 

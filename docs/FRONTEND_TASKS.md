@@ -17,7 +17,10 @@ The frontend is a modern **Next.js 14+ (App Router)** application. It is built u
 
 ## 🚀 2. Your Tasks
 
-Your primary goal is to **connect the static Chat Dashboard (`src/app/chat/page.tsx`) to the Python FastAPI backend**. Currently, the chat UI has hardcoded dummy data. You must make it live.
+> [!IMPORTANT]
+> **PIVOT: THE FRONTEND IS FOR THE PITCH VIDEO ONLY.**
+> The event organizers announced that the final grading harness is a headless batch script. **The judges' automated system will never see the frontend.** 
+> However, we are submitting a Pitch Video to win the aesthetic and design points. Your primary goal is to **make the Chat Dashboard look absolutely astonishing**. Connect it to the local FastAPI backend so we can record a live, flawless demo.
 
 ### Task A: State Management
 Open `src/app/chat/page.tsx`. You need to manage the chat history and the live metrics.
