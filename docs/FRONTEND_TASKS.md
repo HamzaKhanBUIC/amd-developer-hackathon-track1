@@ -47,8 +47,8 @@ Inside `src/app/chat/page.tsx`, locate the `handleInput` or create a new `handle
 Once you receive the `data` from the API, you must parse it and update the UI:
 1. **Append the AI Message**: The API returns `data.response`. Append this to your `messages` array so the user sees the answer.
 2. **Update Tokens Saved**: The API returns `data.tokens_saved`. Add this to your `tokensSaved` state. Update the Metric Card on the left sidebar to show this live number instead of the hardcoded "1.2M".
-3. **Update Active Instance**: The API returns `data.model_selected` (e.g., `accounts/fireworks/models/llama-v3-8b-instruct`). Display a clean version of this string in the "Active Instance" panel.
-4. **Update Topology Visualization**: The API returns `data.routing_layer` (`semantic`, `xgboost`, or `fallback`). 
+3. **Update Active Instance**: The API returns `data.model_selected` (e.g., `accounts/fireworks/models/gemma-4-26b-a4b-it` or `kimi-k2p7-code`). Display a clean version of this string in the "Active Instance" panel.
+4. **Update Topology Visualization**: The API returns `data.routing_layer` (`semantic`, `xgboost-easy`, `xgboost-reasoning`, `xgboost-code` or `fallback`). 
    * If `semantic`, highlight the `L1 Semantic Filter` node.
    * If `xgboost`, highlight the `L2 Zero-Token Router` node.
    * If `fallback`, highlight the `L3 Cloud Fallback` node.

@@ -12,8 +12,8 @@ The backend is built with **Python 3**, **FastAPI**, **SentenceTransformers**, a
 1. **`main.py`**: The FastAPI server entry point. It defines the `/api/route` POST endpoint.
 2. **`router.py`**: The core intelligence. It contains `route_query()`, which uses a 2-tier funnel:
    * **Tier 1 (Semantic)**: Uses `all-MiniLM-L6-v2` to run a local cosine similarity check against known easy intents. Costs 0 tokens.
-   * **Tier 2 (ML Classifier)**: Uses a trained `XGBoost` model to predict if the query needs an 8B or 70B model. Costs 0 tokens.
-3. **`train_model.py`**: A script you must run to generate the `.json` and `.pkl` weights for the XGBoost model.
+   * **Tier 2 (ML Classifier)**: Uses a trained `XGBoost` model to predict if the query needs the cheap `26b` model, the heavy `31b` reasoning model, or the specific `kimi` code model. Costs 0 tokens.
+3. **`generate_dataset.py` & `train_model.py`**: Scripts you must run to synthesize data across the 8 required hackathon categories and generate the `.json` weights for the XGBoost model.
 4. **`fireworks_client.py`**: Handles the actual async API calls to the Fireworks AI API.
 
 ---
@@ -37,12 +37,13 @@ Currently, the frontend (running on `http://localhost:3000`) will be blocked by 
    )
    ```
 
-### Task B: Train the XGBoost Router
-The `router.py` file expects `xgboost_router.json` and `tfidf_vectorizer.pkl` to exist in the root folder, otherwise it defaults to the expensive 70B fallback model.
+### Task B: Generate Data & Train the XGBoost Router
+The `router.py` file expects `xgboost_router.json` to exist in the root folder, otherwise it defaults to the expensive 31B fallback model. (Note: TF-IDF has been fully removed, we now pipe dense vectors directly).
 1. Open a terminal in the `/backend` folder.
 2. Make sure you have installed the requirements: `pip install -r requirements.txt`.
-3. Run the training script: `python train_model.py`.
-4. Verify that the two weight files (`xgboost_router.json` and `tfidf_vectorizer.pkl`) have been generated in the folder.
+3. Generate the 8-category dataset: `python generate_dataset.py` (Wait for it to finish and generate `dataset.csv`).
+4. Run the training script: `python train_model.py`.
+5. Verify that the weight file (`xgboost_router.json`) has been generated in the folder.
 
 ### Task C: Implement Chat History / Context (Important)
 Right now, the `QueryRequest` Pydantic model in `main.py` only accepts a single `prompt: str`. This means the chatbot cannot remember previous messages in the conversation.
@@ -68,6 +69,6 @@ Right now, the `QueryRequest` Pydantic model in `main.py` only accepts a single 
 1. Add your Fireworks API Key to your environment: `export FIREWORKS_API_KEY="your_key_here"`
 2. Open a terminal in the `/backend` folder.
 3. Install dependencies: `pip install -r requirements.txt`
-4. Train models: `python train_model.py`
+4. Generate data & Train models: `python generate_dataset.py` then `python train_model.py`
 5. Run the server: `uvicorn main:app --reload --port 8000`
 6. Test the health endpoint by visiting `http://localhost:8000/health` in your browser.
