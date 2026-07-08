@@ -2,7 +2,9 @@
 
 Welcome to our project repository for the AMD Developer Hackathon: ACT II (Track 1). 
 
-Our goal is to build an AI agent that dynamically routes incoming queries to the most cost-efficient Fireworks AI model (e.g., Llama 3 8B vs 70B) while maintaining absolute accuracy, spending exactly 0 LLM tokens on the routing overhead itself.
+Our goal is to build an AI agent that dynamically routes incoming queries to the most cost-efficient Fireworks AI allowed model (`gemma-4-26b-a4b-it` vs `kimi-k2p7-code` vs `gemma-4-31b-it`) while maintaining absolute accuracy across 8 specific categories, spending exactly 0 LLM tokens on the routing overhead itself.
+
+👉 **[Read the Mandatory Track 1 Requirements](./docs/TRACK_1_REQUIREMENTS.md)**
 
 ---
 
@@ -36,6 +38,7 @@ If you want to run both environments locally to test the full integration:
 ```bash
 cd backend
 pip install -r requirements.txt
+python generate_dataset.py
 python train_model.py
 uvicorn main:app --reload --port 8000
 ```
@@ -47,3 +50,12 @@ npm install
 npm run dev
 ```
 The app will be available at `http://localhost:3000`.
+
+---
+
+## 🐳 Docker (Hackathon Submission Format)
+To run the entire full-stack application as a single Docker container (as required by the Track 1 submission rules):
+```bash
+docker build -t amd-track1-agent .
+docker run -p 3000:3000 -p 8000:8000 -e FIREWORKS_API_KEY="your_key" amd-track1-agent
+```
