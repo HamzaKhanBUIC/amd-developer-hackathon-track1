@@ -27,10 +27,30 @@ EASY_INTENTS = [
 ]
 easy_embeddings = semantic_model.encode(EASY_INTENTS, convert_to_tensor=True, device=device)
 
-# STRICT TRACK 1 ALLOWED MODELS
-CHEAP_MODEL = "accounts/fireworks/models/gemma-4-26b-a4b-it" # Used for Factual, NER, Sentiment, Summarization
-EXPENSIVE_MODEL = "accounts/fireworks/models/gemma-4-31b-it" # Used for Math, Logic, Complex Tasks
-CODE_MODEL = "accounts/fireworks/models/kimi-k2p7-code"      # Used specifically for Code Generation/Debugging
+# STRICT TRACK 1 ALLOWED MODELS (Parsed from environment)
+allowed_models_env = os.environ.get("ALLOWED_MODELS", "")
+allowed_models = [m.strip() for m in allowed_models_env.split(",") if m.strip()]
+
+# Defaults fallback in case environment is missing during local dev
+CHEAP_MODEL = "accounts/fireworks/models/gemma-4-26b-a4b-it"
+EXPENSIVE_MODEL = "accounts/fireworks/models/gemma-4-31b-it"
+CODE_MODEL = "accounts/fireworks/models/kimi-k2p7-code"
+
+# Attempt to map from ALLOWED_MODELS
+if len(allowed_models) >= 3:
+    # Just picking the first few as an example if they exist
+    # In reality we'd match strings to find 'code' or 'gemma-4'
+    pass
+for model in allowed_models:
+    if "code" in model.lower():
+        CODE_MODEL = model
+    elif "31b" in model.lower():
+        EXPENSIVE_MODEL = model
+    elif "26b" in model.lower():
+        CHEAP_MODEL = model
+
+LOCAL_MODEL_KEY = "local" # Constant to indicate local processing
+
 
 def route_query(prompt: str) -> tuple[str, str]:
     """
@@ -42,7 +62,7 @@ def route_query(prompt: str) -> tuple[str, str]:
     max_score = cosine_scores.max().item()
     
     if max_score > 0.85:
-        return (CHEAP_MODEL, "semantic")
+        return (LOCAL_MODEL_KEY, "semantic")
     
     # 2. XGBoost Classifier (Layer 2)
     if models_loaded:
@@ -56,6 +76,6 @@ def route_query(prompt: str) -> tuple[str, str]:
                 return (CODE_MODEL, "xgboost-code")
             return (EXPENSIVE_MODEL, "xgboost-reasoning")
         else:
-            return (CHEAP_MODEL, "xgboost-easy")
+            return (LOCAL_MODEL_KEY, "xgboost-easy")
     
     return (EXPENSIVE_MODEL, "fallback")

@@ -1,0 +1,117 @@
+import os
+import json
+import asyncio
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
+from llama_cpp import Llama
+import traceback
+
+from router import route_query, LOCAL_MODEL_KEY
+from fireworks_client import generate_response_api
+
+# 1. Globals and Semaphores
+# Limits local model execution to 1 at a time to prevent CPU thrashing
+local_semaphore = asyncio.Semaphore(1)
+# Limits API calls to 50 concurrent connections to prevent Memory buffer explosion
+api_semaphore = asyncio.Semaphore(50)
+
+# Initialize the Local Qwen Model
+# Will fail gracefully if model doesn't exist yet (e.g. during local testing without docker)
+LOCAL_MODEL_PATH = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+try:
+    print(f"Loading local model from {LOCAL_MODEL_PATH}...")
+    llm = Llama(
+        model_path=LOCAL_MODEL_PATH,
+        n_threads=2, # Use exactly 2 threads for the 2 vCPUs
+        n_ctx=2048,
+        verbose=False
+    )
+except Exception as e:
+    print(f"Warning: Failed to load local model: {e}")
+    llm = None
+
+def generate_local_response(prompt: str) -> str:
+    """Synchronous local inference using Llama-cpp."""
+    if not llm:
+        return "Error: Local model not loaded."
+    
+    response = llm.create_chat_completion(
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant. Keep answers concise."},
+            {"role": "user", "content": prompt}
+        ],
+        max_tokens=512,
+        temperature=0.3
+    )
+    return response["choices"][0]["message"]["content"]
+
+async def process_task(task: dict) -> dict:
+    task_id = task.get("id") or task.get("task_id")
+    prompt = task.get("prompt") or task.get("query") or task.get("task")
+    
+    if not task_id or not prompt:
+        return {"task_id": str(task_id), "answer": "Invalid task format."}
+
+    # 1. Routing
+    try:
+        model_name, layer = route_query(prompt)
+    except Exception as e:
+        print(f"Routing failed for {task_id}: {e}")
+        model_name = LOCAL_MODEL_KEY # Safe fallback
+
+    answer = ""
+    # 2. Execution
+    if model_name == LOCAL_MODEL_KEY:
+        # Easy task -> Local Inference (0 tokens)
+        async with local_semaphore:
+            answer = await asyncio.to_thread(generate_local_response, prompt)
+    else:
+        # Hard task -> Fireworks API
+        async with api_semaphore:
+            try:
+                # generate_response_api handles its own Tenacity retries
+                answer = await generate_response_api(prompt, model_name)
+            except Exception as e:
+                print(f"API completely failed for {task_id}, falling back to local model. Error: {e}")
+                async with local_semaphore:
+                    answer = await asyncio.to_thread(generate_local_response, prompt)
+    
+    return {"task_id": task_id, "answer": answer}
+
+async def main():
+    input_path = "/input/tasks.json"
+    output_path = "/output/results.json"
+    
+    # For local testing if /input doesn't exist
+    if not os.path.exists(input_path):
+        input_path = "tasks.json"
+        output_path = "results.json"
+        
+        # Create dummy if it doesn't exist
+        if not os.path.exists(input_path):
+            with open(input_path, "w") as f:
+                json.dump([
+                    {"id": "1", "prompt": "What is 2+2?"},
+                    {"id": "2", "prompt": "Write a python script to reverse a string."}
+                ], f)
+    
+    print(f"Reading tasks from {input_path}...")
+    with open(input_path, "r") as f:
+        tasks = json.load(f)
+    
+    print(f"Processing {len(tasks)} tasks...")
+    # Execute all tasks concurrently
+    coroutines = [process_task(task) for task in tasks]
+    results = await asyncio.gather(*coroutines)
+    
+    # asyncio.gather preserves the exact order of the iterables passed to it!
+    # So `results` is perfectly ordered matching `tasks.json`.
+    
+    print(f"Writing results to {output_path}...")
+    os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    print("Done!")
+
+if __name__ == "__main__":
+    asyncio.run(main())
