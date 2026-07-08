@@ -11,8 +11,8 @@ client = AsyncOpenAI(
     api_key=os.environ.get("FIREWORKS_API_KEY", "dummy_key")
 )
 
-# We use the most capable allowed model for generation
-MODEL = "accounts/fireworks/models/gemma-4-31b-it"
+# We use a real public model for dataset generation, since the hackathon models are mock.
+MODEL = "accounts/fireworks/models/llama-v3p1-405b-instruct"
 
 # The 8 mandated categories for Track 1
 CATEGORIES = {

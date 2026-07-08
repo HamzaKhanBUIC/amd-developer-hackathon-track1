@@ -1,0 +1,10 @@
+[
+  {
+    "task_id": 1,
+    "answer": "2 + 2 equals 4."
+  },
+  {
+    "task_id": 2,
+    "answer": "Here's a Python script to reverse a singly linked list:\n\n```python\nclass Node:\n    def __init__(self, value):\n        self.value = value\n        self.next = None\n\ndef reverse_linked_list(head):\n    prev = None\n    current = head\n    \n    while current is not None:\n        next_node = current.next  # Store the next node\n        current.next = prev      # Reverse the link\n        \n        # Move to the next node in the list\n        prev = current\n        current = next_node\n    \n    return prev\n\n# Example usage:\nif __name__ == \"__main__\":\n    head = Node(1)\n    head.next = Node(2)\n    head.next.next = Node(3)\n    \n    reversed_head = reverse_linked_list(head)\n    \n    # Print the reversed list (for demonstration purposes only)\n    current = reversed_head\n    while current:\n        print(current.value, end=\" -> \")\n        current = current.next\n    \n    print(\"None\")\n```\n\nThis script defines a `Node` class to represent each element in the linked list and includes a function `reverse_linked_list()` that reverses the order of nodes. The example usage demonstrates how to create a linked list and reverse it using this function."
+  }
+]

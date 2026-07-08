@@ -7,6 +7,10 @@ from sentence_transformers import SentenceTransformer, util
 
 # Check for AMD ROCm / CUDA availability
 device = "cuda" if torch.cuda.is_available() else "cpu"
+if device == "cuda":
+    print("AMD ROCm GPU detected via PyTorch HIP backend.")
+else:
+    print("Falling back to CPU. No AMD ROCm GPU detected.")
 
 try:
     xgb_model = xgb.XGBClassifier()
@@ -26,12 +30,11 @@ EASY_INTENTS = [
     "Translate a simple sentence.",
     "Give the definition of a common word.",
     "Ask about the current time or date.",
-    "Summarize a short paragraph.",
-    "Extract names and places from a sentence.",
     "Determine if text is positive or negative.",
     "Name a color, animal, or object.",
     "Provide a synonym for a word.",
-    "Answer a basic general knowledge question."
+    "Answer a basic general knowledge question.",
+    "Confirm or deny a simple fact."
 ]
 easy_embeddings = semantic_model.encode(EASY_INTENTS, convert_to_tensor=True, device=device)
 
@@ -39,22 +42,25 @@ easy_embeddings = semantic_model.encode(EASY_INTENTS, convert_to_tensor=True, de
 allowed_models_env = os.environ.get("ALLOWED_MODELS", "")
 allowed_models = [m.strip() for m in allowed_models_env.split(",") if m.strip()]
 
-# Defaults fallback in case environment is missing during local dev
-CHEAP_MODEL = "accounts/fireworks/models/gemma-4-26b-a4b-it"
-EXPENSIVE_MODEL = "accounts/fireworks/models/gemma-4-31b-it"
-CODE_MODEL = "accounts/fireworks/models/kimi-k2p7-code"
+# Default fallbacks (will be overridden if env var is provided)
+CHEAP_MODEL = "accounts/fireworks/models/llama-v3p1-8b-instruct"
+CODE_MODEL = "accounts/fireworks/models/qwen2p5-coder-32b-instruct"
+EXPENSIVE_MODEL = "accounts/fireworks/models/llama-v3p1-70b-instruct"
 
-# Attempt to map from ALLOWED_MODELS
-if len(allowed_models) >= 3:
-    # Just picking the first few as an example if they exist
-    # In reality we'd match strings to find 'code' or 'gemma-4'
-    pass
+# Robustly map from ALLOWED_MODELS regardless of their specific names
+if len(allowed_models) > 0:
+    CHEAP_MODEL = allowed_models[0]
+    EXPENSIVE_MODEL = allowed_models[-1] # Usually the last model in the list is the largest
+    CODE_MODEL = allowed_models[1] if len(allowed_models) > 1 else allowed_models[0]
+
+# Still try to do smart mapping if possible, but safely fallback to the above
 for model in allowed_models:
-    if "code" in model.lower():
+    model_lower = model.lower()
+    if "code" in model_lower or "coder" in model_lower:
         CODE_MODEL = model
-    elif "31b" in model.lower():
+    elif "70b" in model_lower or "405b" in model_lower or "72b" in model_lower:
         EXPENSIVE_MODEL = model
-    elif "26b" in model.lower():
+    elif "8b" in model_lower or "7b" in model_lower or "mini" in model_lower:
         CHEAP_MODEL = model
 
 LOCAL_MODEL_KEY = "local" # Constant to indicate local processing
@@ -120,7 +126,7 @@ def route_query(prompt: str) -> tuple[str, str]:
     cosine_scores = util.cos_sim(prompt_emb, easy_embeddings)
     max_score = cosine_scores.max().item()
     
-    if max_score > 0.85:
+    if max_score > 0.92:
         return (LOCAL_MODEL_KEY, "semantic")
     
     # 2. XGBoost Classifier (Layer 2)
@@ -139,6 +145,9 @@ def route_query(prompt: str) -> tuple[str, str]:
             else:
                 return (CHEAP_MODEL, "xgboost-medium")
         else:
-            return (LOCAL_MODEL_KEY, "xgboost-easy")
+            if max_score > 0.6:
+                return (LOCAL_MODEL_KEY, "xgboost-easy")
+            else:
+                return (CHEAP_MODEL, "xgboost-medium-fallback")
     
     return (EXPENSIVE_MODEL, "fallback")

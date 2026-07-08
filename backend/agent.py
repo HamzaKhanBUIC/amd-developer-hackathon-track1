@@ -59,7 +59,15 @@ async def process_task(task: dict) -> dict:
     cached_response = check_semantic_cache(prompt_embedding)
     if cached_response is not None:
         print(f"  [CACHE HIT] Task {task_id} — returning cached answer.")
-        return {"task_id": task_id, "answer": cached_response}
+        return {
+            "task_id": task_id, 
+            "answer": cached_response,
+            "routing": {
+                "model": "cache",
+                "layer": "semantic_cache_hit",
+                "cost_usd": 0.0
+            }
+        }
 
     # 1. Routing
     try:
@@ -81,14 +89,48 @@ async def process_task(task: dict) -> dict:
                 # generate_response_api handles its own Tenacity retries
                 answer = await generate_response_api(prompt, model_name)
             except Exception as e:
-                print(f"API completely failed for {task_id}, falling back to local model. Error: {e}")
-                async with local_semaphore:
-                    answer = await asyncio.to_thread(generate_local_response, prompt)
+                print(f"API completely failed for {model_name} on task {task_id}. Error: {e}")
+                # We need CHEAP_MODEL from router
+                from router import CHEAP_MODEL
+                if model_name != CHEAP_MODEL:
+                    print(f"Attempting fallback to CHEAP_MODEL...")
+                    try:
+                        answer = await generate_response_api(prompt, CHEAP_MODEL)
+                        layer = "api-fallback"
+                    except Exception as fallback_e:
+                        print(f"CHEAP_MODEL fallback also failed. Falling back to local model. Error: {fallback_e}")
+                        async with local_semaphore:
+                            answer = await asyncio.to_thread(generate_local_response, prompt)
+                            layer = "local-desperation-fallback"
+                else:
+                    print(f"Falling back directly to local model.")
+                    async with local_semaphore:
+                        answer = await asyncio.to_thread(generate_local_response, prompt)
+                        layer = "local-desperation-fallback"
 
     # 3. Store in Semantic Cache for future identical prompts
     add_to_cache(prompt_embedding, answer)
     
-    return {"task_id": task_id, "answer": answer}
+    cost_map = {
+        "semantic": 0.0,
+        "xgboost-easy": 0.0,
+        "xgboost-medium": 0.0005,
+        "xgboost-medium-fallback": 0.0005,
+        "xgboost-code": 0.001,
+        "xgboost-reasoning": 0.002,
+        "fallback": 0.002,
+    }
+    cost_usd = cost_map.get(layer, 0.002)
+
+    return {
+        "task_id": task_id, 
+        "answer": answer,
+        "routing": {
+            "model": model_name,
+            "layer": layer,
+            "cost_usd": cost_usd
+        }
+    }
 
 async def main():
     input_path = "/input/tasks.json"
