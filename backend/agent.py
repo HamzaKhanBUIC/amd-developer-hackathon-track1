@@ -133,8 +133,8 @@ async def process_task(task: dict) -> dict:
     }
 
 async def main():
-    input_path = "/input/tasks.json"
-    output_path = "/output/results.json"
+    input_path = os.environ.get("TASK_INPUT_PATH", "/input/tasks.json")
+    output_path = os.environ.get("TASK_OUTPUT_PATH", "/output/results.json")
     
     # For local testing if /input doesn't exist
     if not os.path.exists(input_path):
