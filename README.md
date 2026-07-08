@@ -14,8 +14,12 @@ To make collaboration seamless, the project is split into distinct frontend and 
 We are building a highly interactive, dashboard using Next.js, Framer Motion, and Tailwind CSS.
 👉 **[Read the Frontend Guide & Tasks](./docs/FRONTEND_TASKS.md)**
 
+### 💎 Design System
+We adhere strictly to a premium, glassmorphic dark mode aesthetic. All components, layouts, and typography must follow the established system.
+👉 **[Read the Aesthetic Design Rules](./docs/DESIGN.md)**
+
 ### ⚙️ Backend Team
-We are building a Zero-Token Semantic Pipeline using Python, FastAPI, XGBoost, and SentenceTransformers to run local classification before hitting the cloud.
+We are building a Zero-Token Semantic Pipeline using Python, FastAPI, XGBoost, and SentenceTransformers to run local classification before hitting the cloud. The pipeline has been updated to use unified dense vectors (dropping TF-IDF) and explicitly targets **AMD ROCm/CUDA acceleration** for embedding throughput.
 👉 **[Read the Backend Guide & Tasks](./docs/BACKEND_TASKS.md)**
 
 ---
