@@ -26,37 +26,26 @@ subprocess.run("git pull origin master", shell=True)
 subprocess.run("pip install -r backend/requirements.txt", shell=True)
 ```
 
-## 2. Download the Local Model
+## 2. Run the Agent Test
 
-Since our router uses a zero-token local execution strategy for easy tasks, we need to download the quantized Qwen 1.5B model. Run this in the next cell:
-
-```python
-import urllib.request
-import os
-
-model_file = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
-if not os.path.exists(model_file):
-    print(f"Downloading {model_file} (approx 1.2 GB)...")
-    url = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
-    urllib.request.urlretrieve(url, model_file)
-    print("Download complete!")
-else:
-    print("Model already exists.")
-```
-
-## 3. Run the Agent Test
-
-Finally, run the agent using this python script. **Make sure to insert your FIREWORKS_API_KEY.**
+Run the agent using this python script. This script automatically checks if your GGUF model is corrupted and redownloads it if necessary. It also respects the environment variables provided by the Radeon Cloud.
 
 ```python
 import os
 import json
 import subprocess
+import urllib.request
 
-# 1. Set required environment variables
-os.environ["FIREWORKS_API_KEY"] = "YOUR_FIREWORKS_API_KEY_HERE"
-os.environ["FIREWORKS_BASE_URL"] = "https://api.fireworks.ai/inference/v1"
-os.environ["ALLOWED_MODELS"] = "accounts/fireworks/models/llama-v3p1-8b-instruct,accounts/fireworks/models/qwen2p5-coder-32b-instruct,accounts/fireworks/models/llama-v3p1-70b-instruct"
+# 1. Set required environment variables ONLY if they aren't already provided by the Radeon Cloud platform
+# If the platform provides a specific FIREWORKS_BASE_URL or ALLOWED_MODELS, we want to use theirs!
+if "FIREWORKS_API_KEY" not in os.environ:
+    os.environ["FIREWORKS_API_KEY"] = "YOUR_FIREWORKS_API_KEY_HERE"
+
+if "FIREWORKS_BASE_URL" not in os.environ:
+    os.environ["FIREWORKS_BASE_URL"] = "https://api.fireworks.ai/inference/v1"
+
+if "ALLOWED_MODELS" not in os.environ:
+    os.environ["ALLOWED_MODELS"] = "accounts/fireworks/models/llama-v3p1-8b-instruct,accounts/fireworks/models/qwen2p5-coder-32b-instruct,accounts/fireworks/models/llama-v3p1-70b-instruct"
 
 os.environ["TASK_INPUT_PATH"] = "./input/tasks.json"
 os.environ["TASK_OUTPUT_PATH"] = "./output/results.json"
@@ -64,17 +53,31 @@ os.environ["TASK_OUTPUT_PATH"] = "./output/results.json"
 # 2. Create fake tasks for grading
 os.makedirs("./input", exist_ok=True)
 practice_tasks = [
-  { "task_id": "task-01", "prompt": "Translate 'Hello World' to French." },
-  { "task_id": "task-02", "prompt": "Write a python script to parse a JSON file." }
+  { "task_id": "practice-01", "prompt": "Translate 'Hello World' to French." },
+  { "task_id": "practice-02", "prompt": "Write a python script to parse a JSON file." }
 ]
 with open("./input/tasks.json", "w") as f:
     json.dump(practice_tasks, f)
 
-# 3. Run the router
-print("Starting Zero-Token Router...")
+# 3. Check for corrupted model file and redownload if necessary
+model_file = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+if os.path.exists(model_file) and os.path.getsize(model_file) < 100000000:  # Less than 100MB is corrupted
+    print("Found corrupted model file. Deleting...")
+    os.remove(model_file)
+
+if not os.path.exists(model_file):
+    print(f"Downloading {model_file} (approx 1.2 GB)...")
+    url = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+    urllib.request.urlretrieve(url, model_file)
+    print("Download complete!")
+else:
+    print(f"Valid model {model_file} already exists locally.")
+
+# 4. Run the router
+print("\nStarting Zero-Token Router...")
 result = subprocess.run(["python", "backend/agent.py"], capture_output=True, text=True)
 
-# 4. Show results
+# 5. Show results
 print("--- LOGS ---")
 print(result.stdout)
 if result.stderr:
@@ -88,8 +91,3 @@ try:
 except Exception as e:
     print("Failed to read output:", e)
 ```
-
-## Troubleshooting
-
-- **404 Model Not Found**: Ensure `ALLOWED_MODELS` has the `p1` in `llama-v3p1-8b-instruct`.
-- **Errno 2 (No such file)**: Ensure you ran `os.chdir("amd-developer-hackathon-track1")` before running `backend/agent.py`.
