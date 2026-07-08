@@ -26,12 +26,12 @@ We achieve this through a highly optimized, 4-layer routing architecture that ag
 
 ## Current Project Status
 - **Backend:** 100% Complete. The routing engine, semantic cache, and fallback logic are fully implemented in Python and tested to be robust against 404s and rate limits.
-- **Models:** Configured to read `ALLOWED_MODELS` from the environment dynamically as required by the hackathon organizers.
-- **Frontend:** Dashboard skeleton exists, pending final polish to visualize routing decisions and cost savings.
+- **Models:** Configured to read `ALLOWED_MODELS` from the environment dynamically as required by the hackathon organizers. The `xgboost_router.json` and `Qwen 2.5 1.5B GGUF` are fully integrated and bundled.
+- **Pitch UI (Optional):** A premium Next.js dashboard exists in `src/` purely to visualize our routing decisions for the pitch video. (Not used by the headless grading script).
 
-## How to Run
+## How to Run (Headless Grading Simulation)
 
 1. Clone this repository.
-2. Ensure you have the `qwen2.5-1.5b-instruct-q4_k_m.gguf` model in the root directory.
-3. Set your `FIREWORKS_API_KEY`.
-4. Run `python backend/agent.py` to start the router on your `tasks.json`.
+2. Set your `FIREWORKS_API_KEY`.
+3. Set your input/output paths (e.g., `export TASK_INPUT_PATH=./tasks.json` and `export TASK_OUTPUT_PATH=./output/results.json`).
+4. Run `python backend/agent.py` to start the headless router.

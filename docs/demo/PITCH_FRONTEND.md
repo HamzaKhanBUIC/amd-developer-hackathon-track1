@@ -1,6 +1,6 @@
-# Frontend Development Guide & Tasks
+# Frontend Development Guide & Tasks (Pitch Demo)
 
-This document is the **master guide for the frontend developer**. It explains the current state of the repository, the architecture, and the precise, step-by-step tasks you need to complete to finish the AMD Zero-Token Router integration.
+This document is for the **frontend developer** building the pitch video assets.
 
 ---
 
@@ -17,10 +17,10 @@ The frontend is a modern **Next.js 14+ (App Router)** application. It is built u
 
 ## 🚀 2. Your Tasks
 
-> [!IMPORTANT]
+> [!CAUTION]
 > **PIVOT: THE FRONTEND IS FOR THE PITCH VIDEO ONLY.**
-> The event organizers announced that the final grading harness is a headless batch script. **The judges' automated system will never see the frontend.** 
-> However, we are submitting a Pitch Video to win the aesthetic and design points. Your primary goal is to **make the Chat Dashboard look absolutely astonishing**. Connect it to the local FastAPI backend so we can record a live, flawless demo.
+> The event organizers announced that the final grading harness is a headless batch script. **The judges' automated grading system will never see the frontend.** 
+> However, we are submitting a Pitch Video to win the aesthetic and design points. Your primary goal is to **make the Chat Dashboard look absolutely astonishing** for the demo.
 
 ### Task A: State Management
 Open `src/app/chat/page.tsx`. You need to manage the chat history and the live metrics.

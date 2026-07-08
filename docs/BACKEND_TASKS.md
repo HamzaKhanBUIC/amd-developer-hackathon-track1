@@ -21,20 +21,21 @@ Our architecture relies on **True Zero-Token Routing**:
 
 Your primary goal is to **finalize the API configuration so the Next.js frontend can communicate with it flawlessly, and ensure the local ML routing models are properly generated.**
 
-### Task A: Build the Headless Batch Processor (`agent.py`)
-The grading harness will not use the FastAPI server. You must create `agent.py`:
-1. Read the array of tasks from `/input/tasks.json`.
-2. Process them concurrently using `asyncio.gather()`. 
-3. If the task is routed to the local `Qwen 1.5B` model, wrap the execution in `asyncio.to_thread()` and use an `asyncio.Semaphore(1)` so we don't crash the 2 vCPUs or exceed 4GB RAM.
-4. Write the results to `/output/results.json` and exit with code 0.
+### Task 1: The Core Architecture
+- [x] Create `agent.py` which will be the absolute entrypoint.
+- [x] Read input and output paths from `os.environ`.
+- [x] Implement the `run()` loop to process `tasks.json`.
+- [x] Structure the `asyncio` loop. Wait, we need an asynchronous engine because network calls to Fireworks take time. Use `asyncio.gather` so API calls fire simultaneously while the CPU processes local tasks one by one.
 
-### Task B: Generate Data & Train the XGBoost Router
-The `router.py` file expects `xgboost_router.json` to exist in the root folder, otherwise it defaults to the expensive 31B fallback model. (Note: TF-IDF has been fully removed, we now pipe dense vectors directly).
-1. Open a terminal in the `/backend` folder.
-2. Make sure you have installed the requirements: `pip install -r requirements.txt`.
-3. Generate the 8-category dataset: `python generate_dataset.py` (Wait for it to finish and generate `dataset.csv`).
-4. Run the training script: `python train_model.py`.
-5. Verify that the weight file (`xgboost_router.json`) has been generated in the folder.
+### Task 2: Machine Learning Routing (XGBoost)
+- [x] You need to classify the task complexity (Easy vs Hard).
+- [x] We will use an XGBoost classifier. The training script `train_model.py` generates synthetic embeddings and trains the model. 
+- [x] **IMPORTANT**: You do NOT need to ask the judges to train the model. The pre-trained `xgboost_router.json` weight file is committed to the repository and is loaded instantly by the agent.
+
+### Task 3: Local Model Integration (Qwen 1.5B)
+- [x] We are using `Qwen2.5-1.5B-Instruct-GGUF` to save tokens.
+- [x] **CRITICAL**: The GGUF file is bundled *inside* the Docker image. 
+- [x] You MUST set `n_threads=2` in `llama-cpp-python`. The host only has 2 vCPUs. If you leave it to auto, it will spawn 16+ threads and the OS scheduler will thrash, causing the 10-minute timeout limit to fail.
 
 ### Task C: Environment Variables (Strict Mandate)
 You cannot hardcode the API URL or Models anymore.

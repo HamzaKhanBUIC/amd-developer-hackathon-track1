@@ -27,19 +27,19 @@ The routing agent must be capable of handling queries across exactly 8 categorie
 - **Token Efficiency:** If we pass the accuracy gate, we are ranked strictly by how many tokens we saved.
 - **Our Advantage (True Zero-Token Hybrid Router):** We will use an ultra-fast XGBoost model to determine query complexity. Easy tasks are routed to an embedded local 1.5B model (costing exactly 0 Fireworks API tokens). Hard tasks are fired asynchronously to the Fireworks API. This mathematically guarantees the highest possible token efficiency ranking.
 
-## 4. Hardware Limitations & Problems to Avoid
+## 4. Hardware Limitations & Problems Avoided
 > [!CAUTION]
 > The grading environment is extremely restricted. If we violate these, the container will instantly fail.
 
 1. **Memory & CPU:** We only have **4 GB RAM** and **2 vCPU**. 
-   - *Problem:* Loading a 7B local model or running parallel local inference will cause an Out-Of-Memory (OOM) crash.
-   - *Solution:* We must use a heavily quantized model like `Qwen 2.5 1.5B` (~1.1GB RAM) and limit local inference concurrency using `asyncio.Semaphore(1)`.
+   - *Our Solution:* We use a heavily quantized model `Qwen2.5-1.5B-Instruct-GGUF` (~1.1GB RAM). We limit local inference concurrency using `asyncio.Semaphore(1)`. We also enforce `n_threads=2` in `llama-cpp-python` to prevent CPU context switching overhead.
 2. **Timeout:** The entire container must finish within **10 minutes**.
-   - *Solution:* We must use `asyncio.gather()` to ensure Fireworks API network calls run concurrently while the local CPU is blocked doing inference.
-3. **Image Size:** The Docker image must be under **10 GB compressed**. We must not bloat the image with web frameworks (Node.js/Next.js) since they are useless to the grading harness.
+   - *Our Solution:* We use `asyncio.gather()` to ensure Fireworks API network calls run concurrently while the local CPU is blocked doing inference.
+3. **Image Size:** The Docker image must be under **10 GB compressed**.
+   - *Our Solution:* We bundle the `Qwen2.5` model weights directly into the Docker image as required by the latest rules, keeping the total size well under 2GB.
 
 ## 5. Submission Format (Headless Batch)
-- **NOT A WEB SERVER:** The container must not spin up FastAPI or Next.js.
-- **I/O Protocol:** It must read from `/input/tasks.json` on startup.
-- **Output:** It must write an array of `{"task_id": "...", "answer": "..."}` objects to `/output/results.json` before exiting.
-- **Exit Status:** Must exit with code `0`.
+- **NOT A WEB SERVER:** The container does not spin up FastAPI or Next.js during grading.
+- **I/O Protocol:** `agent.py` dynamically reads the paths from `os.environ.get("TASK_INPUT_PATH")` and `os.environ.get("TASK_OUTPUT_PATH")`.
+- **Output:** It writes an array of `{"task_id": "...", "answer": "..."}` objects to `results.json` before exiting.
+- **Exit Status:** Exits with code `0`.
