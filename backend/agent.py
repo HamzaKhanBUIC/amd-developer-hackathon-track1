@@ -5,7 +5,10 @@ from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_excep
 from llama_cpp import Llama
 import traceback
 
-from router import route_query, LOCAL_MODEL_KEY
+from router import (
+    route_query, LOCAL_MODEL_KEY, CACHE_HIT_KEY,
+    check_semantic_cache, add_to_cache, get_prompt_embedding,
+)
 from fireworks_client import generate_response_api
 
 # 1. Globals and Semaphores
@@ -51,6 +54,13 @@ async def process_task(task: dict) -> dict:
     if not task_id or not prompt:
         return {"task_id": str(task_id), "answer": "Invalid task format."}
 
+    # 0. Semantic Cache Check (ZERO cost, ZERO latency)
+    prompt_embedding = get_prompt_embedding(prompt)
+    cached_response = check_semantic_cache(prompt_embedding)
+    if cached_response is not None:
+        print(f"  [CACHE HIT] Task {task_id} — returning cached answer.")
+        return {"task_id": task_id, "answer": cached_response}
+
     # 1. Routing
     try:
         model_name, layer = route_query(prompt)
@@ -74,6 +84,9 @@ async def process_task(task: dict) -> dict:
                 print(f"API completely failed for {task_id}, falling back to local model. Error: {e}")
                 async with local_semaphore:
                     answer = await asyncio.to_thread(generate_local_response, prompt)
+
+    # 3. Store in Semantic Cache for future identical prompts
+    add_to_cache(prompt_embedding, answer)
     
     return {"task_id": task_id, "answer": answer}
 
