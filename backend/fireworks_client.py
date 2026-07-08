@@ -1,6 +1,7 @@
 import os
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
+from tenacity import retry, wait_exponential, stop_after_attempt
 
 load_dotenv()
 
