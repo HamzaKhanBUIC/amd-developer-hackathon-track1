@@ -23,7 +23,13 @@ EASY_INTENTS = [
     "Tell a short joke or pun.",
     "Translate a simple sentence.",
     "Give the definition of a common word.",
-    "Ask about the current time or date."
+    "Ask about the current time or date.",
+    "Summarize a short paragraph.",
+    "Extract names and places from a sentence.",
+    "Determine if text is positive or negative.",
+    "Name a color, animal, or object.",
+    "Provide a synonym for a word.",
+    "Answer a basic general knowledge question."
 ]
 easy_embeddings = semantic_model.encode(EASY_INTENTS, convert_to_tensor=True, device=device)
 
