@@ -109,15 +109,10 @@ async def execute_task(task_id: str, prompt: str, prompt_emb, model_name: str, l
     }
     cost_usd = 0.0 if actual_model == LOCAL_MODEL_KEY else cost_map.get(layer, 0.001)
 
+    print(f"[{task_id}] Routed to {actual_model} via {actual_layer} (Cat: {category}, Cost: ${cost_usd})")
     return {
         "task_id": task_id, 
-        "answer": answer,
-        "routing": {
-            "model": actual_model,
-            "layer": actual_layer,
-            "category": category,
-            "cost_usd": cost_usd
-        }
+        "answer": answer
     }
 
 async def main():
