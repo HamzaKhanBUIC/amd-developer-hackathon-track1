@@ -130,8 +130,8 @@ async def main():
     pos_input = unknown[0] if len(unknown) > 0 and not unknown[0].startswith("-") else None
     pos_output = unknown[1] if len(unknown) > 1 and not unknown[1].startswith("-") else None
 
-    input_path = args.input or pos_input or os.environ.get("TASK_INPUT_PATH", "tasks.json")
-    output_path = args.output or pos_output or os.environ.get("TASK_OUTPUT_PATH", "results.json")
+    input_path = args.input or pos_input or os.environ.get("TASK_INPUT_PATH", "/input/tasks.json")
+    output_path = args.output or pos_output or os.environ.get("TASK_OUTPUT_PATH", "/output/results.json")
     
     if not os.path.exists(input_path):
         with open(input_path, "w") as f:
