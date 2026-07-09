@@ -23,9 +23,10 @@ The routing agent must be capable of handling queries across exactly 8 categorie
 8. Code Generation
 
 ## 3. Evaluation Criteria (How to Impress the Judges)
-- **Accuracy Gate:** The output must actually be correct. If the routing chooses a cheap model that hallucinates, we fail.
-- **Token Efficiency:** If we pass the accuracy gate, we are ranked strictly by how many tokens we saved.
-- **Our Advantage (True Zero-Token Hybrid Router):** We will use an ultra-fast XGBoost model to determine query complexity. Easy tasks are routed to an embedded local 1.5B model (costing exactly 0 Fireworks API tokens). Hard tasks are fired asynchronously to the Fireworks API. This mathematically guarantees the highest possible token efficiency ranking.
+- **Accuracy Gate (16/19 Tasks):** The output must actually be correct. There are exactly 19 fixed tasks. To pass the 80% accuracy gate, we must get at least 16 out of 19 correct. If the routing chooses a cheap model that hallucinates and we drop below 16, we fail. (Note: LLM judges aren't perfectly deterministic).
+- **Token Efficiency:** If we pass the 80% accuracy gate, we are ranked strictly by how many tokens we saved.
+- **Our Advantage (True Zero-Token Hybrid Router):** We will use an ultra-fast XGBoost model to determine query complexity. Easy tasks are routed to our embedded local 1.5B model (costing exactly 0 Fireworks API tokens). Hard tasks are fired asynchronously to the Fireworks API. This mathematically guarantees the highest possible token efficiency ranking.
+- **Model Warnings:** Gemma 4 E4B is allowed but it is on-demand (~$7/hour when idle). We do **not** need Gemma to pass the gate, so we will strictly rely on Llama 3.1 and our local Qwen 1.5B to avoid draining our $50 Fireworks credits.
 
 ## 4. Hardware Limitations & Problems Avoided
 > [!CAUTION]
