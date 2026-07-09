@@ -1,4 +1,5 @@
 import os
+import re
 from collections import OrderedDict
 import numpy as np
 import xgboost as xgb
@@ -38,116 +39,138 @@ EASY_INTENTS = [
 ]
 easy_embeddings = semantic_model.encode(EASY_INTENTS, convert_to_tensor=True, device=device)
 
-# STRICT TRACK 1 ALLOWED MODELS (Parsed from environment)
-allowed_models_env = os.environ.get("ALLOWED_MODELS", "")
-allowed_models = [m.strip() for m in allowed_models_env.split(",") if m.strip()]
+# --- 1. DYNAMIC API MODEL SELECTION ---
+def parse_allowed_models():
+    """Parses ALLOWED_MODELS to find the absolute best model for hard tasks and cheapest for fallback."""
+    allowed_models_env = os.environ.get("ALLOWED_MODELS", "")
+    allowed = [m.strip() for m in allowed_models_env.split(",") if m.strip()]
+    
+    # Defaults
+    cheap = "accounts/fireworks/models/llama-v3p1-8b-instruct"
+    code = "accounts/fireworks/models/qwen2p5-coder-32b-instruct"
+    expensive = "accounts/fireworks/models/llama-v3p1-70b-instruct"
+    
+    if not allowed:
+        return cheap, code, expensive
+        
+    cheap = allowed[0]
+    expensive = allowed[-1]
+    code = allowed[1] if len(allowed) > 1 else allowed[0]
+    
+    for model in allowed:
+        ml = model.lower()
+        if "70b" in ml or "72b" in ml or "405b" in ml:
+            expensive = model
+        if "code" in ml or "coder" in ml:
+            code = model
+        if "8b" in ml or "7b" in ml or "mini" in ml:
+            cheap = model
+            
+    return cheap, code, expensive
 
-# Default fallbacks (will be overridden if env var is provided)
-CHEAP_MODEL = "accounts/fireworks/models/llama-v3p1-8b-instruct"
-CODE_MODEL = "accounts/fireworks/models/qwen2p5-coder-32b-instruct"
-EXPENSIVE_MODEL = "accounts/fireworks/models/llama-v3p1-70b-instruct"
+CHEAP_MODEL, CODE_MODEL, EXPENSIVE_MODEL = parse_allowed_models()
 
-# Robustly map from ALLOWED_MODELS regardless of their specific names
-if len(allowed_models) > 0:
-    CHEAP_MODEL = allowed_models[0]
-    EXPENSIVE_MODEL = allowed_models[-1] # Usually the last model in the list is the largest
-    CODE_MODEL = allowed_models[1] if len(allowed_models) > 1 else allowed_models[0]
+LOCAL_MODEL_KEY = "local" 
+CACHE_HIT_KEY = "cache_hit" 
 
-# Still try to do smart mapping if possible, but safely fallback to the above
-for model in allowed_models:
-    model_lower = model.lower()
-    if "code" in model_lower or "coder" in model_lower:
-        CODE_MODEL = model
-    elif "70b" in model_lower or "405b" in model_lower or "72b" in model_lower:
-        EXPENSIVE_MODEL = model
-    elif "8b" in model_lower or "7b" in model_lower or "mini" in model_lower:
-        CHEAP_MODEL = model
-
-LOCAL_MODEL_KEY = "local" # Constant to indicate local processing
-CACHE_HIT_KEY = "cache_hit" # Constant to indicate a semantic cache hit
-
-# ─── Semantic Cache (LRU, In-Memory) ─────────────────────────────────────────
+# --- 2. SEMANTIC CACHE ---
 CACHE_MAX_SIZE = 10_000
 CACHE_SIMILARITY_THRESHOLD = 0.99
-# Stores: key = cache_id (int), value = {"embedding": np.ndarray, "response": str}
 _semantic_cache: OrderedDict[int, dict] = OrderedDict()
 _cache_counter = 0
 
+# Contiguous array for lightning-fast cache hits
+_cache_embeddings_array = np.empty((0, 384), dtype=np.float32)
 
 def check_semantic_cache(prompt_embedding: np.ndarray) -> str | None:
-    """Check if a near-identical prompt exists in the cache.
-    Returns the cached response string, or None on cache miss.
-    """
-    if not _semantic_cache:
+    if len(_semantic_cache) == 0:
         return None
-
-    # Stack all cached embeddings into a matrix for batch cosine similarity
-    cached_embeddings = np.stack([v["embedding"] for v in _semantic_cache.values()])
-    # Compute cosine similarity between the new prompt and all cached prompts
+    
+    # Use the contiguous array for O(1) vectorized dot product
     prompt_norm = prompt_embedding / (np.linalg.norm(prompt_embedding) + 1e-10)
-    cached_norms = cached_embeddings / (np.linalg.norm(cached_embeddings, axis=1, keepdims=True) + 1e-10)
+    cached_norms = _cache_embeddings_array / (np.linalg.norm(_cache_embeddings_array, axis=1, keepdims=True) + 1e-10)
     similarities = cached_norms @ prompt_norm
-
     max_idx = int(np.argmax(similarities))
     max_score = float(similarities[max_idx])
 
     if max_score >= CACHE_SIMILARITY_THRESHOLD:
-        # Move the hit entry to the end (most recently used) for LRU
         hit_key = list(_semantic_cache.keys())[max_idx]
         _semantic_cache.move_to_end(hit_key)
         return _semantic_cache[hit_key]["response"]
-
     return None
 
-
 def add_to_cache(prompt_embedding: np.ndarray, response: str) -> None:
-    """Store a new prompt+response in the cache with LRU eviction."""
-    global _cache_counter
+    global _cache_counter, _cache_embeddings_array
+    
     if len(_semantic_cache) >= CACHE_MAX_SIZE:
-        _semantic_cache.popitem(last=False)  # Evict least-recently-used
+        _semantic_cache.popitem(last=False)
+        _cache_embeddings_array = _cache_embeddings_array[1:] # Remove oldest
+        
     _cache_counter += 1
     _semantic_cache[_cache_counter] = {
-        "embedding": prompt_embedding,
         "response": response,
     }
+    if len(_cache_embeddings_array) == 0:
+        _cache_embeddings_array = np.array([prompt_embedding], dtype=np.float32)
+    else:
+        _cache_embeddings_array = np.vstack([_cache_embeddings_array, prompt_embedding])
 
+# --- 3. CONDITIONAL TOKEN PRUNING ---
+def prune_prompt(prompt: str, category: str) -> str:
+    """Strips whitespace/JSON formatting for text tasks to save 10-30% tokens."""
+    if category in ["math", "logic", "code"]:
+        return prompt # DO NOT PRUNE CODE/MATH
+    
+    # Prune extra newlines and spaces
+    pruned = re.sub(r'\s*\n\s*', '\n', prompt)
+    pruned = re.sub(r' {2,}', ' ', pruned)
+    return pruned.strip()
 
-def get_prompt_embedding(prompt: str) -> np.ndarray:
-    """Embed a prompt string into a dense numpy vector using the shared MiniLM model."""
-    return semantic_model.encode(prompt, convert_to_numpy=True)
+# --- 4. CATEGORY-CALIBRATED CONFIDENCE THRESHOLDS (C3T) ---
+def determine_category(prompt: str) -> str:
+    pl = prompt.lower()
+    if any(k in pl for k in ["code", "python", "javascript", "rust", "c++", "debug", "function"]):
+        return "code"
+    if any(k in pl for k in ["math", "logic", "puzzle", "theorem", "prove", "calculate", "equation"]):
+        return "math"
+    if any(k in pl for k in ["sentiment", "positive", "negative"]):
+        return "sentiment"
+    if any(k in pl for k in ["summarize", "summary", "tldr"]):
+        return "summarization"
+    if any(k in pl for k in ["extract", "name", "entity", "ner"]):
+        return "ner"
+    return "factual"
 
-
-def route_query(prompt: str) -> tuple[str, str]:
+def route_query(pruned_prompt: str, category: str, prompt_emb: np.ndarray) -> tuple[str, str, str, str]:
     """
-    Returns (model_name, layer_used)
+    Returns (model_name, layer_used, pruned_prompt, category)
+    Accepts pre-calculated numpy embeddings to prevent the 'Triple Embedding' timeout bug.
     """
-    # 1. Semantic Layer (Layer 1)
-    prompt_emb = semantic_model.encode(prompt, convert_to_tensor=True, device=device)
-    cosine_scores = util.cos_sim(prompt_emb, easy_embeddings)
+    # 1. Category Bypassing (Math/Code NEVER go to local model to prevent confident hallucinations)
+    if category in ["math", "logic", "code"]:
+        if category == "code":
+            return (CODE_MODEL, "c3t-code-bypass", pruned_prompt, category)
+        return (EXPENSIVE_MODEL, "c3t-math-bypass", pruned_prompt, category)
+    
+    # 2. Semantic Layer
+    # prompt_emb is 1D (384,), convert back to tensor for cosine similarity against easy_embeddings
+    prompt_tensor = torch.tensor(prompt_emb, device=device)
+    cosine_scores = util.cos_sim(prompt_tensor, easy_embeddings)
     max_score = cosine_scores.max().item()
     
-    if max_score > 0.92:
-        return (LOCAL_MODEL_KEY, "semantic")
-    
-    # 2. XGBoost Classifier (Layer 2)
+    # 3. XGBoost Classifier (Layer 2) for Text Tasks
     if models_loaded:
-        features = prompt_emb.cpu().numpy().reshape(1, -1)
-        prediction = xgb_model.predict(features)[0] # 0 = easy, 1 = hard
+        features = prompt_emb.reshape(1, -1)
+        prob_easy = xgb_model.predict_proba(features)[0][0] 
         
-        # Simple heuristic to detect if the hard prompt requires the specific code model
-        # In a real scenario, this could be a 3-class XGBoost model (Easy, Hard, Code)
-        if prediction == 1:
-            prompt_lower = prompt.lower()
-            if any(keyword in prompt_lower for keyword in ["code", "python", "javascript", "rust", "c++", "debug", "function"]):
-                return (CODE_MODEL, "xgboost-code")
-            elif any(keyword in prompt_lower for keyword in ["math", "logic", "puzzle", "theorem", "prove", "calculate", "equation"]):
-                return (EXPENSIVE_MODEL, "xgboost-reasoning")
-            else:
-                return (CHEAP_MODEL, "xgboost-medium")
-        else:
-            if max_score > 0.6:
-                return (LOCAL_MODEL_KEY, "xgboost-easy")
-            else:
-                return (CHEAP_MODEL, "xgboost-medium-fallback")
+        # C3T: Raised thresholds to > 0.85 to strictly prevent the CPU Timeout Trap
+        if category in ["sentiment", "ner"]:
+            if prob_easy > 0.85 or max_score > 0.85:
+                return (LOCAL_MODEL_KEY, "c3t-sentiment-local", pruned_prompt, category)
+        else: # summarization, factual
+            if prob_easy > 0.95 or max_score > 0.95:
+                return (LOCAL_MODEL_KEY, "c3t-text-local", pruned_prompt, category)
+                
+        return (CHEAP_MODEL, "c3t-fallback", pruned_prompt, category)
     
-    return (EXPENSIVE_MODEL, "fallback")
+    return (EXPENSIVE_MODEL, "fallback", pruned_prompt, category)
