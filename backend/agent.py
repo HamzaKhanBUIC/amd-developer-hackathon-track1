@@ -24,8 +24,8 @@ try:
     print(f"Loading local model from {LOCAL_MODEL_PATH}...")
     llm = Llama(
         model_path=LOCAL_MODEL_PATH,
-        n_threads=8,
-        n_ctx=4096,
+        n_threads=os.cpu_count() or 2,
+        n_ctx=2048,
         verbose=False
     )
 except Exception as e:
