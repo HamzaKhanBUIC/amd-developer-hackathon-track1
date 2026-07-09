@@ -7,11 +7,7 @@ from tenacity import retry, wait_exponential, stop_after_attempt
 load_dotenv()
 
 # Defensive API Key Resolution
-FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY") or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
-if not FIREWORKS_API_KEY or FIREWORKS_API_KEY == "dummy":
-    print("CRITICAL ERROR: No valid API Key found (checked FIREWORKS_API_KEY, API_KEY, OPENAI_API_KEY).", file=sys.stderr)
-    print("Cannot proceed with API routing. Exiting securely.", file=sys.stderr)
-    sys.exit(1)
+FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY") or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY") or "dummy"
 
 BASE_URL = os.getenv("FIREWORKS_BASE_URL", "https://api.fireworks.ai/inference/v1")
 

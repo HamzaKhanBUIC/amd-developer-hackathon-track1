@@ -86,10 +86,17 @@ async def execute_task(task_id: str, prompt: str, prompt_emb, model_name: str, l
                         actual_layer = f"{layer}_api_fallback"
                         actual_model = CHEAP_MODEL
                     except Exception as fallback_e:
-                        print(f"[{task_id}] API fallback failed. Returning error.")
-                        answer = "Error: API Fallback failed."
+                        print(f"[{task_id}] API fallback failed. Falling back to local model. Error: {fallback_e}")
+                        async with local_semaphore:
+                            answer = await asyncio.wait_for(asyncio.to_thread(generate_local_response, prompt), timeout=45.0)
+                        actual_layer = "local_desperation_fallback"
+                        actual_model = LOCAL_MODEL_KEY
                 else:
-                    answer = "Error: API failed."
+                    print(f"[{task_id}] Falling back directly to local model.")
+                    async with local_semaphore:
+                        answer = await asyncio.wait_for(asyncio.to_thread(generate_local_response, prompt), timeout=45.0)
+                    actual_layer = "local_desperation_fallback"
+                    actual_model = LOCAL_MODEL_KEY
                         
     # Add to semantic cache using the pre-calculated embedding
     if answer and "Error" not in answer:
@@ -117,10 +124,14 @@ async def main():
     parser = argparse.ArgumentParser(description="AMD Hackathon Task Runner")
     parser.add_argument("--input", type=str, help="Path to input tasks.json")
     parser.add_argument("--output", type=str, help="Path to output results.json")
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 
-    input_path = args.input or os.environ.get("TASK_INPUT_PATH", "tasks.json")
-    output_path = args.output or os.environ.get("TASK_OUTPUT_PATH", "results.json")
+    # Heuristic to catch positional arguments if provided
+    pos_input = unknown[0] if len(unknown) > 0 and not unknown[0].startswith("-") else None
+    pos_output = unknown[1] if len(unknown) > 1 and not unknown[1].startswith("-") else None
+
+    input_path = args.input or pos_input or os.environ.get("TASK_INPUT_PATH", "tasks.json")
+    output_path = args.output or pos_output or os.environ.get("TASK_OUTPUT_PATH", "results.json")
     
     if not os.path.exists(input_path):
         with open(input_path, "w") as f:
