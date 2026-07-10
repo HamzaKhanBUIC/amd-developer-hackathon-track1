@@ -90,7 +90,8 @@ def route_query(pruned_prompt: str, category: str) -> tuple[str, str, str, str]:
     if category in ["math", "logic"]:
         return (EXPENSIVE_MODEL, "rule-math-logic-bypass", pruned_prompt, category)
     
+    # Route all categories including sentiment and ner to API models for 100% maximum accuracy
     if category in ["sentiment", "ner"]:
-        return (LOCAL_MODEL_KEY, "rule-structured-local", pruned_prompt, category)
+        return (CHEAP_MODEL, "rule-structured-api", pruned_prompt, category)
     
     return (CHEAP_MODEL, "rule-general-api", pruned_prompt, category)

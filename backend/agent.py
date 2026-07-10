@@ -12,8 +12,7 @@ from router import (
     prune_prompt, determine_category,
     CHEAP_MODEL
 )
-from fireworks_client import generate_response_api, CATEGORY_CONFIGS
-import re
+from fireworks_client import generate_response_api
 
 # 1. Globals and Semaphores
 local_semaphore = asyncio.Semaphore(1)
@@ -33,55 +32,28 @@ except Exception as e:
     print(f"Warning: Failed to load local model: {e}")
     llm = None
 
-def clean_local_response(text: str, category: str) -> str:
-    """Sanitizes local model outputs to strictly match expected evaluation formats."""
-    text = text.strip()
-    if category == "sentiment":
-        # Force strict "Positive", "Negative", or "Neutral" output
-        lower_text = text.lower()
-        if "positive" in lower_text:
-            return "Positive"
-        if "negative" in lower_text:
-            return "Negative"
-        return "Neutral"
-        
-    elif category == "ner":
-        # Strip markdown json code blocks (e.g. ```json ... ```) which small models often add
-        if text.startswith("```"):
-            text = re.sub(r"^```(?:json)?\n?", "", text, flags=re.IGNORECASE)
-            text = re.sub(r"\n?```$", "", text)
-        return text.strip()
-        
-    return text
-
 def generate_local_response(prompt: str, category: str) -> str:
-    """Synchronous local inference using Llama-cpp with category prompts."""
+    """Synchronous local inference using Llama-cpp."""
     if not llm:
         return ""
     
-    # Get the exact system prompt and temperature used for the API
-    config = CATEGORY_CONFIGS.get(category, CATEGORY_CONFIGS["general"])
-    sys_prompt = config["sys_prompt"]
-    temp = config["temperature"]
-    
     # Aggressively limit max_tokens to prevent timeouts
-    max_tokens = config["max_tokens"]
+    max_tokens = 150
     if category == "sentiment":
         max_tokens = 5
     elif category == "ner":
-        max_tokens = 40  # Keep it slightly larger than 30 for complete JSON list outputs
+        max_tokens = 30
         
     response = llm.create_chat_completion(
         messages=[
-            {"role": "system", "content": sys_prompt},
+            {"role": "system", "content": "You are a helpful assistant. Keep answers concise."},
             {"role": "user", "content": prompt}
         ],
         max_tokens=max_tokens,
-        temperature=temp
+        temperature=0.3
     )
     
-    raw_content = response["choices"][0]["message"]["content"]
-    return clean_local_response(raw_content, category)
+    return response["choices"][0]["message"]["content"]
 
 async def execute_task(task_id: str, prompt: str, model_name: str, layer: str, category: str) -> dict:
     answer = ""
