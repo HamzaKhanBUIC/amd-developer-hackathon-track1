@@ -14,11 +14,7 @@ RUN wget --progress=dot:giga -O /app/qwen2.5-3b-instruct-q4_k_m.gguf https://hug
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# AMD ROCm / PyTorch Compatibility Hints
-ENV PYTORCH_ENABLE_MPS_FALLBACK=1
-ENV HSA_OVERRIDE_GFX_VERSION=11.0.0
-
-# 3. Copy the backend application code and runner script
+# 4. Copy the backend application code and runner script
 COPY backend/ /app/
 COPY run.sh /app/
 RUN chmod +x /app/run.sh
