@@ -9,8 +9,8 @@ import traceback
 
 from router import (
     route_query, LOCAL_MODEL_KEY, CACHE_HIT_KEY,
-    check_semantic_cache, add_to_cache, prune_prompt, determine_category,
-    CHEAP_MODEL, semantic_model, try_deterministic_solve
+    prune_prompt, determine_category,
+    CHEAP_MODEL
 )
 from fireworks_client import generate_response_api
 
@@ -32,83 +32,87 @@ except Exception as e:
     print(f"Warning: Failed to load local model: {e}")
     llm = None
 
-def generate_local_response(prompt: str) -> str:
+def generate_local_response(prompt: str, category: str) -> str:
     """Synchronous local inference using Llama-cpp."""
     if not llm:
         return ""
     
-    # Generate response, capped at 150 tokens to force it to finish fast
+    # Aggressively limit max_tokens to prevent timeouts
+    max_tokens = 150
+    if category == "sentiment":
+        max_tokens = 5
+    elif category == "ner":
+        max_tokens = 30
+        
     response = llm.create_chat_completion(
         messages=[
             {"role": "system", "content": "You are a helpful assistant. Keep answers concise."},
             {"role": "user", "content": prompt}
         ],
-        max_tokens=150,
+        max_tokens=max_tokens,
         temperature=0.3
     )
     
     return response["choices"][0]["message"]["content"]
 
-async def execute_task(task_id: str, prompt: str, prompt_emb, model_name: str, layer: str, category: str) -> dict:
+async def execute_task(task_id: str, prompt: str, model_name: str, layer: str, category: str) -> dict:
     answer = ""
     actual_layer = layer
     actual_model = model_name
     
+    # Pre-parse allowed models for the API cascade
+    allowed_models_env = os.environ.get("ALLOWED_MODELS", "")
+    allowed_models = [m.strip() for m in allowed_models_env.split(",") if m.strip()]
+    if not allowed_models:
+        allowed_models = [CHEAP_MODEL]
+    
     if model_name == LOCAL_MODEL_KEY:
         try:
             async with local_semaphore:
-                # Removed wait_for timeout to prevent background thread leaking which causes CPU exhaustion
-                answer = await asyncio.to_thread(generate_local_response, prompt)
+                # Wrapped in a 20-second timeout to prevent CPU exhaustion and container death
+                answer = await asyncio.wait_for(asyncio.to_thread(generate_local_response, prompt, category), timeout=20.0)
                 if not answer.strip():
                     raise ValueError("Local model returned empty string")
         except Exception as e:
             print(f"[{task_id}] Local Model Failed ({e}) - Aborting and falling back to Fireworks API.")
             actual_layer = f"{layer}_fallback"
-            actual_model = CHEAP_MODEL
-            try:
-                async with api_semaphore:
-                    answer = await generate_response_api(prompt, CHEAP_MODEL, category)
-            except Exception as fallback_e:
-                print(f"[{task_id}] API fallback failed too: {fallback_e}")
-                answer = "Error: All models failed."
-    else:
-        # Fireworks API Execution
-        try:
-            async with api_semaphore:
-                answer = await generate_response_api(prompt, model_name, category)
-        except Exception as e:
-            print(f"[{task_id}] API failed for {model_name}. Error: {e}")
-            if model_name != CHEAP_MODEL:
-                print(f"[{task_id}] Attempting fallback to CHEAP_MODEL...")
+            
+            # API Cascade Fallback
+            for fb_model in reversed(allowed_models):
+                actual_model = fb_model
                 try:
                     async with api_semaphore:
-                        answer = await generate_response_api(prompt, CHEAP_MODEL, category)
-                    actual_layer = f"{layer}_api_fallback"
-                    actual_model = CHEAP_MODEL
+                        answer = await generate_response_api(prompt, fb_model, category)
+                    break
                 except Exception as fallback_e:
-                    print(f"[{task_id}] API fallback failed. Falling back to local model. Error: {fallback_e}")
-                    try:
-                        async with local_semaphore:
-                            answer = await asyncio.to_thread(generate_local_response, prompt)
-                        actual_layer = "local_desperation_fallback"
-                        actual_model = LOCAL_MODEL_KEY
-                    except Exception as fallback_local_e:
-                        print(f"[{task_id}] Desperation local fallback failed: {fallback_local_e}")
-                        answer = "Error: All models failed."
-            else:
-                print(f"[{task_id}] Falling back directly to local model...")
-                try:
-                    async with local_semaphore:
-                        answer = await asyncio.to_thread(generate_local_response, prompt)
-                    actual_layer = "local_desperation_fallback"
-                    actual_model = LOCAL_MODEL_KEY
-                except Exception as fallback_local_e:
-                    print(f"[{task_id}] Desperation local fallback failed: {fallback_local_e}")
+                    print(f"[{task_id}] API cascade fallback ({fb_model}) failed: {fallback_e}")
                     answer = "Error: All models failed."
-                        
-    # Add to semantic cache using the pre-calculated embedding
-    if answer and "Error" not in answer:
-        add_to_cache(prompt_emb, answer)
+    else:
+        # Fireworks API Execution with Cascade
+        success = False
+        models_to_try = [model_name] + [m for m in reversed(allowed_models) if m != model_name]
+        
+        for try_model in models_to_try:
+            actual_model = try_model
+            try:
+                async with api_semaphore:
+                    answer = await generate_response_api(prompt, try_model, category)
+                success = True
+                break
+            except Exception as e:
+                print(f"[{task_id}] API failed for {try_model}. Error: {e}")
+                actual_layer = f"{layer}_api_cascade_fallback"
+                
+        if not success:
+            print(f"[{task_id}] All API models failed. Falling back to local model desperation...")
+            try:
+                async with local_semaphore:
+                    answer = await asyncio.wait_for(asyncio.to_thread(generate_local_response, prompt, category), timeout=20.0)
+                actual_layer = "local_desperation_fallback"
+                actual_model = LOCAL_MODEL_KEY
+            except Exception as fallback_local_e:
+                print(f"[{task_id}] Desperation local fallback failed: {fallback_local_e}")
+                answer = "Error: All models failed."
     
     cost_map = {
         "c3t-code-bypass": 0.001,
@@ -150,8 +154,7 @@ async def main():
         
     print(f"Processing {len(tasks)} tasks via 5-Layer Hybrid Router...")
     
-    # --- PHASE 1: MASSIVE BATCH PRE-PROCESSING ---
-    # To fix the 'Triple Embedding' timeout bug, we calculate ALL embeddings in one go.
+    # --- PHASE 1: PRE-PROCESSING ---
     pruned_prompts = []
     categories = []
     for task in tasks:
@@ -161,11 +164,7 @@ async def main():
         pruned_prompts.append(pruned)
         categories.append(cat)
         
-    print("Batch encoding semantic embeddings...")
-    # This generates a contiguous numpy array of shape (N, 384)
-    all_embeddings = semantic_model.encode(pruned_prompts, convert_to_numpy=True)
-    
-    # First Pass: Check Semantic Cache and Route Queries
+    # Route Queries
     results = [None] * len(tasks)
     local_tasks = []
     api_tasks_by_category = {}
@@ -175,33 +174,15 @@ async def main():
         orig_prompt = task.get("prompt") or task.get("query") or task.get("task", "")
         pruned_prompt = pruned_prompts[i]
         category = categories[i]
-        prompt_emb = all_embeddings[i]
-        
-        # 0. Zero-Token Deterministic Solve (before ANY API/local call)
-        det_answer = try_deterministic_solve(orig_prompt, category)
-        if det_answer:
-            results[i] = {"task_id": task_id, "answer": det_answer}
-            print(f"[{task_id}] DETERMINISTIC: '{det_answer}' (0 tokens, cat={category})")
-            continue
-        
-        # 1. Check Semantic Cache
-        cached_response = check_semantic_cache(prompt_emb)
-        if cached_response:
-            results[i] = {
-                "task_id": task_id, 
-                "answer": cached_response,
-                "routing": {"model": "cache", "layer": "semantic_cache_hit", "cost_usd": 0.0}
-            }
-            continue
             
-        # 2. Route Query (C3T)
+        # 1. Route Query
         try:
-            model_name, layer, _, cat = route_query(pruned_prompt, category, prompt_emb)
+            model_name, layer, _, cat = route_query(pruned_prompt, category)
         except Exception as e:
             print(f"Routing failed for {task_id}: {e}")
             model_name, layer, cat = LOCAL_MODEL_KEY, "fallback", category
             
-        task_obj = (i, task_id, pruned_prompt, prompt_emb, model_name, layer, cat, orig_prompt)
+        task_obj = (i, task_id, pruned_prompt, model_name, layer, cat, orig_prompt)
         
         # Group tasks for Cache-Aware Sticky Batching
         if model_name == LOCAL_MODEL_KEY:
@@ -214,16 +195,16 @@ async def main():
     # Execute Local Tasks (Serialized to save CPU)
     if local_tasks:
         print(f"Executing {len(local_tasks)} local tasks sequentially...")
-        for idx, t_id, p_prompt, emb, m_name, lyr, cat, orig_prompt in local_tasks:
-            results[idx] = await execute_task(t_id, p_prompt, emb, m_name, lyr, cat)
+        for idx, t_id, p_prompt, m_name, lyr, cat, orig_prompt in local_tasks:
+            results[idx] = await execute_task(t_id, p_prompt, m_name, lyr, cat)
             
     # Execute API Tasks by Category (KV Cache Prefix Optimization)
     for cat, category_tasks in api_tasks_by_category.items():
         print(f"Executing {len(category_tasks)} API tasks for category: {cat}...")
         coroutines = []
         indices = []
-        for idx, t_id, p_prompt, emb, m_name, lyr, c, orig_prompt in category_tasks:
-            coroutines.append(execute_task(t_id, p_prompt, emb, m_name, lyr, c))
+        for idx, t_id, p_prompt, m_name, lyr, c, orig_prompt in category_tasks:
+            coroutines.append(execute_task(t_id, p_prompt, m_name, lyr, c))
             indices.append(idx)
             
         batch_results = await asyncio.gather(*coroutines)
