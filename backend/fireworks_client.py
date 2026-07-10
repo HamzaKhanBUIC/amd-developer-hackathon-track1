@@ -11,7 +11,8 @@ BASE_URL = os.getenv("FIREWORKS_BASE_URL", "https://api.fireworks.ai/inference/v
 
 client = AsyncOpenAI(
     api_key=FIREWORKS_API_KEY,
-    base_url=BASE_URL
+    base_url=BASE_URL,
+    timeout=15.0  # Added explicit timeout to prevent hanging connections
 )
 
 # --- CATEGORY-SPECIFIC CONFIGS ---

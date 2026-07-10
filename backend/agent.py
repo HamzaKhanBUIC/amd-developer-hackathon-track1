@@ -55,48 +55,56 @@ async def execute_task(task_id: str, prompt: str, prompt_emb, model_name: str, l
     actual_model = model_name
     
     if model_name == LOCAL_MODEL_KEY:
-        async with local_semaphore:
-            try:
-                # Critical Timeout Wrapper: Abort local CPU inference if it exceeds 45s
-                answer = await asyncio.wait_for(asyncio.to_thread(generate_local_response, prompt), timeout=45.0)
+        try:
+            async with local_semaphore:
+                # Removed wait_for timeout to prevent background thread leaking which causes CPU exhaustion
+                answer = await asyncio.to_thread(generate_local_response, prompt)
                 if not answer.strip():
                     raise ValueError("Local model returned empty string")
-            except Exception as e:
-                print(f"[{task_id}] Local Model Failed/Timeout ({e}) - Aborting and falling back to Fireworks API.")
-                # Fallback to CHEAP_MODEL on Fireworks
+        except Exception as e:
+            print(f"[{task_id}] Local Model Failed ({e}) - Aborting and falling back to Fireworks API.")
+            actual_layer = f"{layer}_fallback"
+            actual_model = CHEAP_MODEL
+            try:
                 async with api_semaphore:
-                    try:
-                        answer = await generate_response_api(prompt, CHEAP_MODEL, category)
-                        actual_layer = f"{layer}_timeout_fallback"
-                        actual_model = CHEAP_MODEL
-                    except Exception as fallback_e:
-                        print(f"[{task_id}] API fallback failed too: {fallback_e}")
-                        answer = "Error: All models failed."
+                    answer = await generate_response_api(prompt, CHEAP_MODEL, category)
+            except Exception as fallback_e:
+                print(f"[{task_id}] API fallback failed too: {fallback_e}")
+                answer = "Error: All models failed."
     else:
         # Fireworks API Execution
-        async with api_semaphore:
-            try:
+        try:
+            async with api_semaphore:
                 answer = await generate_response_api(prompt, model_name, category)
-            except Exception as e:
-                print(f"[{task_id}] API failed for {model_name}. Error: {e}")
-                if model_name != CHEAP_MODEL:
-                    print(f"[{task_id}] Attempting fallback to CHEAP_MODEL...")
-                    try:
+        except Exception as e:
+            print(f"[{task_id}] API failed for {model_name}. Error: {e}")
+            if model_name != CHEAP_MODEL:
+                print(f"[{task_id}] Attempting fallback to CHEAP_MODEL...")
+                try:
+                    async with api_semaphore:
                         answer = await generate_response_api(prompt, CHEAP_MODEL, category)
-                        actual_layer = f"{layer}_api_fallback"
-                        actual_model = CHEAP_MODEL
-                    except Exception as fallback_e:
-                        print(f"[{task_id}] API fallback failed. Falling back to local model. Error: {fallback_e}")
+                    actual_layer = f"{layer}_api_fallback"
+                    actual_model = CHEAP_MODEL
+                except Exception as fallback_e:
+                    print(f"[{task_id}] API fallback failed. Falling back to local model. Error: {fallback_e}")
+                    try:
                         async with local_semaphore:
-                            answer = await asyncio.wait_for(asyncio.to_thread(generate_local_response, prompt), timeout=45.0)
+                            answer = await asyncio.to_thread(generate_local_response, prompt)
                         actual_layer = "local_desperation_fallback"
                         actual_model = LOCAL_MODEL_KEY
-                else:
-                    print(f"[{task_id}] Falling back directly to local model.")
+                    except Exception as fallback_local_e:
+                        print(f"[{task_id}] Desperation local fallback failed: {fallback_local_e}")
+                        answer = "Error: All models failed."
+            else:
+                print(f"[{task_id}] Falling back directly to local model...")
+                try:
                     async with local_semaphore:
-                        answer = await asyncio.wait_for(asyncio.to_thread(generate_local_response, prompt), timeout=45.0)
+                        answer = await asyncio.to_thread(generate_local_response, prompt)
                     actual_layer = "local_desperation_fallback"
                     actual_model = LOCAL_MODEL_KEY
+                except Exception as fallback_local_e:
+                    print(f"[{task_id}] Desperation local fallback failed: {fallback_local_e}")
+                    answer = "Error: All models failed."
                         
     # Add to semantic cache using the pre-calculated embedding
     if answer and "Error" not in answer:
