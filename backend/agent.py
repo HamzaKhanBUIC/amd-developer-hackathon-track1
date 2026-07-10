@@ -8,7 +8,7 @@ from llama_cpp import Llama
 import traceback
 
 from router import (
-    route_query, LOCAL_MODEL_KEY, CACHE_HIT_KEY,
+    route_query, LOCAL_MODEL_KEY,
     prune_prompt, determine_category,
     CHEAP_MODEL
 )
@@ -24,7 +24,7 @@ try:
     print(f"Loading local model from {LOCAL_MODEL_PATH}...")
     llm = Llama(
         model_path=LOCAL_MODEL_PATH,
-        n_threads=os.cpu_count() or 2,
+        n_threads=2,
         n_ctx=2048,
         verbose=False
     )

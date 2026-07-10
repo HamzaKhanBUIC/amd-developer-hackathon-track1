@@ -1,1 +1,1 @@
-[{"id": "t1", "prompt": "Solve math: 1+1"}, {"id": "t2", "prompt": "Code a loop in Python"}, {"id": "t3", "prompt": "Analyze sentiment: Bad!"}]
+[{"id": "t1", "prompt": "Solve math: 1+1"}, {"id": "t2", "prompt": "Code a loop in Python"}, {"id": "t3", "prompt": "Analyze sentiment: Bad!"}, {"id": "t4", "prompt": "Summarize this: The quick brown fox jumps over the lazy dog."}, {"id": "t5", "prompt": "Extract entities: John lives in New York."}, {"id": "t6", "prompt": "What is the capital of France?"}, {"id": "t7", "prompt": "If A implies B, and A is true, is B true?"}]

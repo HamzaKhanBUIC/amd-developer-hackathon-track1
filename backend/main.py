@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from router import route_query
-from fireworks_client import generate_response, CHEAP_MODEL, EXPENSIVE_MODEL
+from fireworks_client import generate_response_api, CHEAP_MODEL, EXPENSIVE_MODEL
 
 app = FastAPI(title="AMD Hackathon Router API")
 
@@ -11,10 +11,15 @@ class QueryRequest(BaseModel):
 @app.post("/api/route")
 async def api_route_query(request: QueryRequest):
     # Determine the model using Zero-Token Routing
-    model_selected, routing_layer = route_query(request.prompt)
+    # determine_category should probably be imported or simulated here, but route_query now takes (pruned, category, emb)
+    # Let's import determine_category
+    from router import determine_category, prune_prompt
+    cat = determine_category(request.prompt)
+    pruned = prune_prompt(request.prompt, cat)
+    model_selected, routing_layer, _, _ = route_query(pruned, cat)
     
     # Generate the actual response
-    response_text = await generate_response(request.prompt, model=model_selected)
+    response_text = await generate_response_api(request.prompt, model=model_selected, category=cat)
     
     # Calculate simulated token savings for UI demonstration
     tokens_saved = 0

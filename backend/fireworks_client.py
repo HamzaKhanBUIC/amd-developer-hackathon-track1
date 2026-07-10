@@ -20,76 +20,42 @@ client = AsyncOpenAI(
 # This is the single biggest accuracy lever: precision prompts beat generic ones.
 CATEGORY_CONFIGS = {
     "sentiment": {
-        "sys_prompt": (
-            "You are a sentiment classification expert. "
-            "Output ONLY 'Positive', 'Negative', or 'Neutral'. "
-            "No explanation. No other text."
-        ),
+        "sys_prompt": "Output Positive, Negative, or Neutral.",
         "temperature": 0.0,
         "max_tokens": 5,
     },
     "ner": {
-        "sys_prompt": (
-            "You are a Named Entity Recognition (NER) expert. "
-            "Extract all named entities. "
-            "Output ONLY valid JSON: "
-            "{\"persons\": [], \"organizations\": [], \"locations\": [], \"dates\": []}. "
-            "No markdown formatting. No explanation."
-        ),
+        "sys_prompt": "Extract entities. Output valid JSON.",
         "temperature": 0.0,
         "max_tokens": 80,
     },
     "summarization": {
-        "sys_prompt": (
-            "You are a precise text summarization expert. "
-            "Summarize the given text into exactly 1 concise sentence. "
-            "Output ONLY the summary, no preamble, no labels."
-        ),
+        "sys_prompt": "Summarize in 1 concise sentence.",
         "temperature": 0.1,
         "max_tokens": 50,
     },
     "factual": {
-        "sys_prompt": (
-            "You are a factual question-answering expert. "
-            "Answer directly in 1 short sentence maximum. "
-            "Output only the answer, no preamble."
-        ),
+        "sys_prompt": "Answer directly in 1 sentence.",
         "temperature": 0.0,
         "max_tokens": 40,
     },
     "math": {
-        "sys_prompt": (
-            "You are a precise mathematical reasoning expert. "
-            "Solve step by step very concisely (5 words max per step). "
-            "End with 'Answer: [value]' on a new line."
-        ),
+        "sys_prompt": "Solve concisely. End with Answer:",
         "temperature": 0.1,
         "max_tokens": 150,
     },
     "logic": {
-        "sys_prompt": (
-            "You are a logical reasoning expert. "
-            "Solve the puzzle very concisely (5 words max per step). "
-            "End with 'Answer: [value]' on a new line."
-        ),
+        "sys_prompt": "Solve concisely. End with Answer:",
         "temperature": 0.1,
-        "max_tokens": 150,
+        "max_tokens": 80,
     },
     "code": {
-        "sys_prompt": (
-            "You are a senior software engineer. "
-            "Provide ONLY the code solution. "
-            "No markdown code blocks if possible. No prose explanations."
-        ),
+        "sys_prompt": "Output code only. No prose.",
         "temperature": 0.2,
-        "max_tokens": 300,
+        "max_tokens": 150,
     },
     "general": {
-        "sys_prompt": (
-            "You are a helpful assistant. "
-            "Answer as concisely as possible. 1-2 sentences max. "
-            "No filler."
-        ),
+        "sys_prompt": "Be concise.",
         "temperature": 0.1,
         "max_tokens": 80,
     },
