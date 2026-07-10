@@ -18,8 +18,8 @@ from fireworks_client import generate_response_api
 local_semaphore = asyncio.Semaphore(1)
 api_semaphore = asyncio.Semaphore(50)
 
-# Revert to 1.5B model to guarantee we NEVER hit the 10-minute grading timeout
-LOCAL_MODEL_PATH = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+# Upgrade to 3B model for better accuracy while fitting within the 4GB RAM budget
+LOCAL_MODEL_PATH = "qwen2.5-3b-instruct-q4_k_m.gguf"
 try:
     print(f"Loading local model from {LOCAL_MODEL_PATH}...")
     llm = Llama(

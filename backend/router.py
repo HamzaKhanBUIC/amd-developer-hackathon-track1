@@ -82,31 +82,37 @@ easy_embeddings = semantic_model.encode(EASY_INTENTS, convert_to_tensor=True, de
 
 # --- 1. DYNAMIC API MODEL SELECTION ---
 def parse_allowed_models():
-    """Parses ALLOWED_MODELS to find the absolute best model for hard tasks and cheapest for fallback."""
+    """Parses ALLOWED_MODELS to map the specific official hackathon models to the correct tiers."""
     allowed_models_env = os.environ.get("ALLOWED_MODELS", "")
     allowed = [m.strip() for m in allowed_models_env.split(",") if m.strip()]
     
-    # Defaults - updated for extreme token efficiency and 85%+ accuracy
-    cheap = "accounts/fireworks/models/gpt-oss-20b"
-    code = "accounts/fireworks/models/qwen2p5-coder-32b-instruct"
-    expensive = "accounts/fireworks/models/gpt-oss-120b"
+    # Official fallback defaults if env var is somehow empty during local dev
+    cheap = "accounts/fireworks/models/gemma-4-26b-a4b-it"
+    code = "accounts/fireworks/models/kimi-k2p7-code"
+    expensive = "accounts/fireworks/models/minimax-m3"
     
     if not allowed:
         return cheap, code, expensive
         
+    # Set safe defaults from what we're given
     cheap = allowed[0]
     expensive = allowed[-1]
     code = allowed[1] if len(allowed) > 1 else allowed[0]
     
+    # Iterate through allowed list and explicitly match the official models
     for model in allowed:
         ml = model.lower()
-        if "70b" in ml or "72b" in ml or "405b" in ml or "120b" in ml:
+        
+        # 1. Math/Logic (Most expensive/capable)
+        if "minimax-m3" in ml or "70b" in ml or "72b" in ml or "405b" in ml or "120b" in ml:
             expensive = model
-        if "qwen" in ml and ("72b" in ml or "70b" in ml):
-            expensive = model  # Prefer Qwen 72B over Llama 70B — stronger on math
-        if "code" in ml or "coder" in ml:
+            
+        # 2. Code (Code generation/debugging)
+        if "kimi-k2p7-code" in ml or "code" in ml or "coder" in ml:
             code = model
-        if "8b" in ml or "7b" in ml or "mini" in ml or "20b" in ml:
+            
+        # 3. Sentiment/NER/Factual (Cheapest, fastest)
+        if "gemma-4-26b-a4b-it" in ml or ("gemma" in ml and "nvfp4" not in ml) or "8b" in ml or "7b" in ml or "20b" in ml:
             cheap = model
             
     return cheap, code, expensive
