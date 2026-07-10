@@ -10,7 +10,7 @@ import traceback
 from router import (
     route_query, LOCAL_MODEL_KEY, CACHE_HIT_KEY,
     check_semantic_cache, add_to_cache, prune_prompt, determine_category,
-    CHEAP_MODEL, semantic_model
+    CHEAP_MODEL, semantic_model, try_deterministic_solve
 )
 from fireworks_client import generate_response_api
 
@@ -168,6 +168,13 @@ async def main():
         pruned_prompt = pruned_prompts[i]
         category = categories[i]
         prompt_emb = all_embeddings[i]
+        
+        # 0. Zero-Token Deterministic Solve (before ANY API/local call)
+        det_answer = try_deterministic_solve(orig_prompt, category)
+        if det_answer:
+            results[i] = {"task_id": task_id, "answer": det_answer}
+            print(f"[{task_id}] DETERMINISTIC: '{det_answer}' (0 tokens, cat={category})")
+            continue
         
         # 1. Check Semantic Cache
         cached_response = check_semantic_cache(prompt_emb)

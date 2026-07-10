@@ -1,10 +1,51 @@
 import os
 import re
+import ast
+import operator as op_module
 from collections import OrderedDict
 import numpy as np
 import xgboost as xgb
 import torch
 from sentence_transformers import SentenceTransformer, util
+
+# --- 0. ZERO-TOKEN DETERMINISTIC SOLVER ---
+_SAFE_OPS = {
+    ast.Add: op_module.add, ast.Sub: op_module.sub,
+    ast.Mult: op_module.mul, ast.Div: op_module.truediv,
+    ast.Pow: op_module.pow, ast.USub: op_module.neg,
+    ast.Mod: op_module.mod,
+}
+
+def _eval_node(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_OPS:
+        return _SAFE_OPS[type(node.op)](_eval_node(node.left), _eval_node(node.right))
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _SAFE_OPS:
+        return _SAFE_OPS[type(node.op)](_eval_node(node.operand))
+    raise ValueError("Unsafe node")
+
+def try_deterministic_solve(prompt: str, category: str) -> str | None:
+    """Returns an answer using 0 API tokens, or None if it must go to LLM."""
+    if category == "math":
+        # Extract and evaluate simple arithmetic expressions
+        match = re.search(r'[\d\s\+\-\*\/\^\(\)\.\%]+', prompt)
+        if match:
+            expr = match.group(0).strip().replace('^', '**')
+            try:
+                tree = ast.parse(expr, mode='eval')
+                result = _eval_node(tree.body)
+                if result is not None:
+                    return str(int(result)) if result == int(result) else f"{result:.4f}".rstrip('0').rstrip('.')
+            except Exception:
+                pass
+    if category == "sentiment":
+        pl = prompt.lower()
+        pos = sum(1 for w in ["love", "great", "excellent", "amazing", "happy", "wonderful", "fantastic", "perfect"] if w in pl)
+        neg = sum(1 for w in ["hate", "terrible", "awful", "horrible", "worst", "disgusting", "dreadful"] if w in pl)
+        if pos > 2 and neg == 0: return "Positive"
+        if neg > 2 and pos == 0: return "Negative"
+    return None
 
 # Check for AMD ROCm / CUDA availability
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -45,10 +86,10 @@ def parse_allowed_models():
     allowed_models_env = os.environ.get("ALLOWED_MODELS", "")
     allowed = [m.strip() for m in allowed_models_env.split(",") if m.strip()]
     
-    # Defaults
-    cheap = "accounts/fireworks/models/llama-v3p1-8b-instruct"
+    # Defaults - updated for extreme token efficiency and 85%+ accuracy
+    cheap = "accounts/fireworks/models/gpt-oss-20b"
     code = "accounts/fireworks/models/qwen2p5-coder-32b-instruct"
-    expensive = "accounts/fireworks/models/llama-v3p1-70b-instruct"
+    expensive = "accounts/fireworks/models/gpt-oss-120b"
     
     if not allowed:
         return cheap, code, expensive
@@ -59,11 +100,13 @@ def parse_allowed_models():
     
     for model in allowed:
         ml = model.lower()
-        if "70b" in ml or "72b" in ml or "405b" in ml:
+        if "70b" in ml or "72b" in ml or "405b" in ml or "120b" in ml:
             expensive = model
+        if "qwen" in ml and ("72b" in ml or "70b" in ml):
+            expensive = model  # Prefer Qwen 72B over Llama 70B — stronger on math
         if "code" in ml or "coder" in ml:
             code = model
-        if "8b" in ml or "7b" in ml or "mini" in ml:
+        if "8b" in ml or "7b" in ml or "mini" in ml or "20b" in ml:
             cheap = model
             
     return cheap, code, expensive
@@ -75,7 +118,7 @@ CACHE_HIT_KEY = "cache_hit"
 
 # --- 2. SEMANTIC CACHE ---
 CACHE_MAX_SIZE = 10_000
-CACHE_SIMILARITY_THRESHOLD = 0.99
+CACHE_SIMILARITY_THRESHOLD = 0.92  # Lowered from 0.99 — catches near-duplicate queries
 _semantic_cache: OrderedDict[int, dict] = OrderedDict()
 _cache_counter = 0
 
@@ -129,48 +172,54 @@ def prune_prompt(prompt: str, category: str) -> str:
 # --- 4. CATEGORY-CALIBRATED CONFIDENCE THRESHOLDS (C3T) ---
 def determine_category(prompt: str) -> str:
     pl = prompt.lower()
-    if any(k in pl for k in ["code", "python", "javascript", "rust", "c++", "debug", "function"]):
+    if any(k in pl for k in ["code", "python", "javascript", "typescript", "rust", "c++", "java", "debug", "function", "algorithm", "script", "program", "class", "def ", "implement"]):
         return "code"
-    if any(k in pl for k in ["math", "logic", "puzzle", "theorem", "prove", "calculate", "equation"]):
+    if any(k in pl for k in ["calculate", "equation", "arithmetic", "algebra", "geometry", "integral", "derivative", "compute", "math", "formula", "numeric"]):
         return "math"
-    if any(k in pl for k in ["sentiment", "positive", "negative"]):
+    if any(k in pl for k in ["logic", "puzzle", "riddle", "theorem", "prove", "deduce", "infer", "syllogism", "if.*then", "all.*are"]):
+        return "logic"
+    if any(k in pl for k in ["sentiment", "feeling", "emotion", "tone", "opinion", "positive or negative", "how does.*feel"]):
         return "sentiment"
-    if any(k in pl for k in ["summarize", "summary", "tldr"]):
+    if any(k in pl for k in ["summarize", "summary", "tldr", "condense", "brief", "shorten", "main points"]):
         return "summarization"
-    if any(k in pl for k in ["extract", "name", "entity", "ner"]):
+    if any(k in pl for k in ["extract", "entity", "ner", "named", "identify", "list.*person", "list.*organization", "list.*location"]):
         return "ner"
-    return "factual"
+    if any(k in pl for k in ["what is", "who is", "when did", "where is", "define", "capital of", "how many", "which country", "year was"]):
+        return "factual"
+    return "general"  # Changed from 'factual' — general gets its own prompt config
 
 def route_query(pruned_prompt: str, category: str, prompt_emb: np.ndarray) -> tuple[str, str, str, str]:
     """
     Returns (model_name, layer_used, pruned_prompt, category)
     Accepts pre-calculated numpy embeddings to prevent the 'Triple Embedding' timeout bug.
     """
-    # 1. Category Bypassing (Math/Code NEVER go to local model to prevent confident hallucinations)
-    if category in ["math", "logic", "code"]:
-        if category == "code":
-            return (CODE_MODEL, "c3t-code-bypass", pruned_prompt, category)
-        return (EXPENSIVE_MODEL, "c3t-math-bypass", pruned_prompt, category)
+    # 1. Hard category bypasses — route to correct API tier immediately
+    if category == "code":
+        return (CODE_MODEL, "c3t-code-bypass", pruned_prompt, category)
+    if category in ["math", "logic"]:
+        return (EXPENSIVE_MODEL, "c3t-math-logic-bypass", pruned_prompt, category)
     
-    # 2. Semantic Layer
-    # prompt_emb is 1D (384,), convert back to tensor for cosine similarity against easy_embeddings
+    # 2. Structured text tasks (Sentiment, NER) — ALWAYS route to API, NEVER local
+    # The 1.5B local model had ~35-40% accuracy on these; 8B API gets 80%+
+    if category in ["sentiment", "ner"]:
+        return (CHEAP_MODEL, "c3t-structured-api", pruned_prompt, category)
+    
+    # 3. General tasks — route to cheap API with general prompt
+    if category == "general":
+        return (CHEAP_MODEL, "c3t-general-api", pruned_prompt, category)
+    
+    # 4. Summarization/Factual — use XGBoost/semantic to decide if cheap API is enough
+    # prompt_emb is 1D (384,), convert back to tensor for cosine similarity
     prompt_tensor = torch.tensor(prompt_emb, device=device)
     cosine_scores = util.cos_sim(prompt_tensor, easy_embeddings)
     max_score = cosine_scores.max().item()
     
-    # 3. XGBoost Classifier (Layer 2) for Text Tasks
     if models_loaded:
         features = prompt_emb.reshape(1, -1)
-        prob_easy = xgb_model.predict_proba(features)[0][0] 
-        
-        # C3T: Raised thresholds to > 0.85 to strictly prevent the CPU Timeout Trap
-        if category in ["sentiment", "ner"]:
-            if prob_easy > 0.85 or max_score > 0.85:
-                return (LOCAL_MODEL_KEY, "c3t-sentiment-local", pruned_prompt, category)
-        else: # summarization, factual
-            if prob_easy > 0.95 or max_score > 0.95:
-                return (LOCAL_MODEL_KEY, "c3t-text-local", pruned_prompt, category)
-                
-        return (CHEAP_MODEL, "c3t-fallback", pruned_prompt, category)
+        prob_easy = xgb_model.predict_proba(features)[0][0]
+        # Only send to local model if EXTREMELY confident (protects accuracy)
+        if prob_easy > 0.99 and max_score > 0.99:
+            return (LOCAL_MODEL_KEY, "c3t-text-local", pruned_prompt, category)
+        return (CHEAP_MODEL, "c3t-text-api", pruned_prompt, category)
     
-    return (EXPENSIVE_MODEL, "fallback", pruned_prompt, category)
+    return (CHEAP_MODEL, "c3t-fallback", pruned_prompt, category)
