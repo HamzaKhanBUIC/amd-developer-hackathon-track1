@@ -1,5 +1,8 @@
 import os
 import re
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- 1. DYNAMIC API MODEL SELECTION ---
 def parse_allowed_models():
@@ -8,9 +11,9 @@ def parse_allowed_models():
     allowed = [m.strip() for m in allowed_models_env.split(",") if m.strip()]
     
     # Official fallback defaults if env var is somehow empty during local dev
-    cheap = "accounts/fireworks/models/gemma-4-26b-a4b-it"
-    code = "accounts/fireworks/models/kimi-k2p7-code"
-    expensive = "accounts/fireworks/models/minimax-m3"
+    cheap = "accounts/fireworks/models/glm-5p1"
+    code = "accounts/fireworks/models/kimi-k2p6"
+    expensive = "accounts/fireworks/models/deepseek-v4-pro"
     
     if not allowed:
         return cheap, code, expensive
@@ -25,16 +28,17 @@ def parse_allowed_models():
         ml = model.lower()
         
         # 1. Math/Logic (Most expensive/capable)
-        if "minimax-m3" in ml or "70b" in ml or "72b" in ml or "405b" in ml or "120b" in ml:
+        if "deepseek" in ml or "gpt" in ml or "70b" in ml or "72b" in ml or "405b" in ml or "120b" in ml or "minimax" in ml:
             expensive = model
             
         # 2. Code (Code generation/debugging)
-        if "kimi-k2p7-code" in ml or "code" in ml or "coder" in ml:
+        if "kimi" in ml or "code" in ml or "coder" in ml:
             code = model
             
         # 3. Sentiment/NER/Factual (Cheapest, fastest)
-        if "gemma-4-26b-a4b-it" in ml or ("gemma" in ml and "nvfp4" not in ml) or "8b" in ml or "7b" in ml or "20b" in ml:
-            cheap = model
+        if "glm" in ml or "gemma" in ml or "8b" in ml or "7b" in ml or re.search(r'\b20b\b', ml) or "mini" in ml:
+            if "120b" not in ml: # Prevent 120b from being matched as cheap
+                cheap = model
             
     return cheap, code, expensive
 

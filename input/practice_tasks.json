@@ -1,0 +1,7 @@
+[
+    {"id": "t1", "prompt": "A warehouse starts with 2,400 units. In Q1 it sells 37%. How many are sold?"},
+    {"id": "t2", "prompt": "Is 'amazing' positive or negative?"},
+    {"id": "t3", "prompt": "Write a python script to reverse a string."},
+    {"id": "t4", "prompt": "Identify the entities in this text: Apple Inc. launched the new iPhone on September 12, 2023 in California."},
+    {"id": "t5", "prompt": "What is the capital of France?"}
+]

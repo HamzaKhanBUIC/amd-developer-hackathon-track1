@@ -66,18 +66,18 @@ def generate_local_response(prompt: str, category: str) -> str:
     if not llm:
         return ""
     
-    # Same safe max_tokens as API
+    # Tighter max_tokens for local models to prevent timeout cascades
     max_tokens_map = {
-        "sentiment": 100,
-        "ner": 150,
-        "factual": 200,
-        "summarization": 250,
-        "math": 300,
-        "logic": 250,
-        "code": 400,
-        "general": 250
+        "sentiment": 50,
+        "ner": 100,
+        "factual": 100,
+        "summarization": 150,
+        "math": 100,
+        "logic": 100,
+        "code": 100,
+        "general": 100
     }
-    max_tokens = max_tokens_map.get(category, 250)
+    max_tokens = max_tokens_map.get(category, 100)
         
     response = llm.create_chat_completion(
         messages=[
@@ -88,7 +88,11 @@ def generate_local_response(prompt: str, category: str) -> str:
         temperature=0.3
     )
     
-    return response["choices"][0]["message"]["content"]
+    choice = response["choices"][0]
+    if choice.get("finish_reason") == "length":
+        return "" # Force API fallback on truncation
+        
+    return choice["message"]["content"]
 
 async def execute_task(task_id: str, prompt: str, category: str) -> dict:
     answer = ""

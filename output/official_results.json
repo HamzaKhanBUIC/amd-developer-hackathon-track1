@@ -1,0 +1,34 @@
+[
+  {
+    "task_id": "practice-01",
+    "answer": "The capital of Australia is **Canberra**. It is situated inland in the Australian Capital Territory and is most closely associated with **Lake Burley Griffin**, an artificial lake that runs through the city\u2019s centre. (The city also lies near the Murrumbidgee River.)"
+  },
+  {
+    "task_id": "practice-02",
+    "answer": "36"
+  },
+  {
+    "task_id": "practice-03",
+    "answer": "Mixed. The review contains both positive sentiment (battery life) and negative sentiment (screen durability)."
+  },
+  {
+    "task_id": "practice-04",
+    "answer": "Machine learning is progressively used in healthcare to diagnose conditions, plan treatments, monitor patients, analyze medical images, predict deterioration, and detect patterns in electronic health records."
+  },
+  {
+    "task_id": "practice-05",
+    "answer": "**Named Entities and Their Types**\n\n| Entity | Type |\n|--------|------|\n| Maria Sanchez | Person |\n| Fireworks AI | Organization |\n| Berlin | Location |\n| last March | Date |"
+  },
+  {
+    "task_id": "practice-06",
+    "answer": "The user wants me to find and fix a bug in a Python function `get_max(nums)` that currently just returns the first element instead of the maximum element.\n\nThe current code:\n```python\ndef get_max(nums): return nums[0]\n```\n\nThis is obviously wrong because it returns the first element regardless of whether it's the maximum.\n\nThe fix should iterate through the list and find the maximum value. I should provide the corrected function.\n\nOptions:\n1. Use built-in `max(nums)` - simplest\n2. Implement manually to show the algorithm: initialize max_val with first element, then iterate and compare\n\nSince the user said \"find and fix it,\" I should probably show the manual implementation or mention both. But given the original function seems to be attempting a manual approach (returning nums[0] as if starting a manual loop but forgetting the rest), the manual fix might be more appropriate. However, using the built-in is the Pythonic way.\n\nLet me provide a robust manual implementation and mention the built-in alternative.\n\nManual fix:\n```python\ndef get_max(nums):\n    if not nums:\n        return None  # or raise error\n    max_val = nums[0]\n    for num in nums:\n        if num > max_val:\n            max_val = num\n    return max_val\n```\n\nOr simply:\n```python\ndef get_max(nums):\n    return max(nums)\n```\n\nI should be concise but complete. I'll provide the manual implementation since that's likely what the exercise is about (implementing max), but also note the built-in.\n\nWait, the user said \"be concise but complete.\" So I should provide the corrected code and briefly explain the bug.\n\nBug: It only returns the first element and never compares it to other elements.\n\nFix: Iterate through the list to find the largest value.\n\nI'll provide:\n```python\ndef get_max(nums):\n    if not nums:\n        return None  # handle empty list\n    max_val = nums[0]"
+  },
+  {
+    "task_id": "practice-07",
+    "answer": "Sam owns the cat. (Consequently, Lee owns the bird.)"
+  },
+  {
+    "task_id": "practice-08",
+    "answer": "The user wants a Python function that returns the second-largest number in a list, handling duplicates correctly. This means if the list is something like [1, 2, 2, 3], the second largest should be 2, not 1 (if we just looked at unique values) or some other interpretation. Wait, actually, \"handling duplicates correctly\" usually means that duplicates don't count as separate values for the ranking. So [5, 5, 3] should return 3, not 5. Or it could mean [5, 5, 3] returns 5 if we're looking for the second largest element including duplicates? No, typically \"second largest\" with duplicates handled correctly means the second largest distinct value.\n\nLet me think about the requirements:\n1. Return the second-largest number\n2. Handle duplicates correctly (usually means distinct values)\n3. Need to handle edge cases: list with fewer than 2 distinct elements\n\nApproaches:\n1. Convert to a set, sort descending, pick index 1. Time: O(n log n), Space: O(n)\n2. Use a heap (nlargest(2, set(lst))) Time: O(n log k) which is O(n)\n3. Single pass to find two largest distinct values. Time: O(n), Space: O(1)\n\nThe single pass approach is most efficient and elegant.\n\nSingle pass logic:\n- Initialize first = second = -infinity (or None)\n- Iterate through numbers:\n  - If num > first: second = first, first = num\n  - elif first > num > second: second = num\n  - (if num == first, ignore for distinct values)\n- Return second if it's not -infinity, else raise error or return None\n\nWait, but what if the list is [1, 1]? Then there is no second largest distinct number. Should raise ValueError or return None. The prompt doesn't specify, but good practice"
+  }
+]
