@@ -52,13 +52,13 @@ def determine_category(prompt: str) -> str:
     if any(k in pl for k in ["calculate", "equation", "arithmetic", "algebra", "geometry", "integral", "derivative", "compute", "math", "formula", "numeric", "solve", "how many"]):
         # Note: Added 'solve' and 'how many' for better math coverage
         return "math"
-    if any(k in pl for k in ["logic", "puzzle", "riddle", "theorem", "prove", "deduce", "infer", "syllogism", "if.*then", "all.*are"]):
+    if any(k in pl for k in ["logic", "puzzle", "riddle", "theorem", "prove", "deduce", "infer", "syllogism", "premises", "conclusion"]):
         return "logic"
-    if any(k in pl for k in ["sentiment", "feeling", "emotion", "tone", "opinion", "positive or negative", "how does.*feel"]):
+    if any(k in pl for k in ["sentiment", "feeling", "emotion", "tone", "opinion", "positive or negative", "classify"]):
         return "sentiment"
     if any(k in pl for k in ["summarize", "summary", "tldr", "condense", "brief", "shorten", "main points"]):
         return "summarization"
-    if any(k in pl for k in ["extract", "entity", "ner", "named", "identify", "list.*person", "list.*organization", "list.*location"]):
+    if any(k in pl for k in ["extract", "entity", "ner", "named", "identify", "person", "organization", "location"]):
         return "ner"
     if any(k in pl for k in ["what is", "who is", "when did", "where is", "define", "capital of", "which country", "year was"]):
         return "factual"
