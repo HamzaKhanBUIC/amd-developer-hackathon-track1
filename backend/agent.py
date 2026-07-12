@@ -61,38 +61,54 @@ def validate_answer(answer: str, category: str) -> bool:
         return any(k in ans_lower for k in ["def ", "return", "function", "class", "import", "print", "var", "let", "const"])
     return True
 
+import threading
+local_inference_lock = threading.Lock()
+
 def generate_local_response(prompt: str, category: str) -> str:
-    """Synchronous local inference using Llama-cpp with proper max_tokens."""
+    """Synchronous local inference using Llama-cpp with proper max_tokens and thread safety."""
     if not llm:
         return ""
-    
-    # Tighter max_tokens for local models to prevent timeout cascades
-    max_tokens_map = {
-        "sentiment": 50,
-        "ner": 100,
-        "factual": 100,
-        "summarization": 150,
-        "math": 100,
-        "logic": 100,
-        "code": 100,
-        "general": 100
-    }
-    max_tokens = max_tokens_map.get(category, 100)
         
-    response = llm.create_chat_completion(
-        messages=[
-            {"role": "system", "content": "Follow the user's instructions exactly. Be concise but complete."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=max_tokens,
-        temperature=0.3
-    )
+    # Prevent concurrent execution on the same Llama instance if previous asyncio.wait_for timed out
+    # If a previous thread is still running, this will block until it finishes.
+    # We use a blocking acquire with a timeout just in case it hangs forever.
+    if not local_inference_lock.acquire(timeout=60.0):
+        print("Warning: Local inference lock could not be acquired (previous inference hung). Skipping local.")
+        return ""
+
+    try:
+        # Tighter max_tokens for local models to prevent timeout cascades
+        max_tokens_map = {
+            "sentiment": 50,
+            "ner": 100,
+            "factual": 100,
+            "summarization": 150,
+            "math": 100,
+            "logic": 100,
+            "code": 100,
+            "general": 100
+        }
+        max_tokens = max_tokens_map.get(category, 100)
+            
+        response = llm.create_chat_completion(
+            messages=[
+                {"role": "system", "content": "Follow the user's instructions exactly. Be concise but complete."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=max_tokens,
+            temperature=0.3
+        )
     
-    choice = response["choices"][0]
-    if choice.get("finish_reason") == "length":
-        return "" # Force API fallback on truncation
-        
-    return choice["message"]["content"]
+        choice = response["choices"][0]
+        if choice.get("finish_reason") == "length":
+            return "" # Force API fallback on truncation
+            
+        return choice["message"]["content"]
+    except Exception as e:
+        print(f"Local inference error: {e}")
+        return ""
+    finally:
+        local_inference_lock.release()
 
 async def execute_task(task_id: str, prompt: str, category: str) -> dict:
     answer = ""
