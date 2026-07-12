@@ -8,11 +8,7 @@ def solve(prompt, category):
     """
     prompt_lower = prompt.lower()
     
-    if category == "math":
-        return solve_math(prompt_lower)
-    elif category == "ner":
-        return solve_ner(prompt)
-    
+    # Disabled due to catastrophic accuracy failure on multi-step problems
     return None
 
 def solve_math(prompt):

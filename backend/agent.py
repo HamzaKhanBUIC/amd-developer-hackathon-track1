@@ -172,16 +172,16 @@ async def main():
     output_path = args.output or pos_output or os.environ.get("TASK_OUTPUT_PATH", "/output/results.json")
     
     if not os.path.exists(input_path):
-        with open(input_path, "w") as f:
-            json.dump([
-                {"id": "1", "prompt": "What is 2+2?"},
-                {"id": "2", "prompt": "Write a python script to reverse a string."},
-                {"id": "3", "prompt": "Is 'amazing' positive or negative?"}
-            ], f)
-    
-    print(f"Reading tasks from {input_path}...")
-    with open(input_path, "r") as f:
-        tasks = json.load(f)
+        print(f"Warning: {input_path} not found. Using default dummy tasks.")
+        tasks = [
+            {"id": "1", "prompt": "What is 2+2?"},
+            {"id": "2", "prompt": "Write a python script to reverse a string."},
+            {"id": "3", "prompt": "Is 'amazing' positive or negative?"}
+        ]
+    else:
+        print(f"Reading tasks from {input_path}...")
+        with open(input_path, "r") as f:
+            tasks = json.load(f)
         
     print(f"Processing {len(tasks)} tasks via 3-Tier Local-First Router...")
     

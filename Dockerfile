@@ -24,4 +24,4 @@ COPY run.sh /app/
 RUN chmod +x /app/run.sh
 
 # Execute the headless batch processor via the wrapper script
-CMD ["./run.sh"]
+ENTRYPOINT ["./run.sh"]
