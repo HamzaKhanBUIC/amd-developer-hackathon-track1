@@ -31,32 +31,32 @@ CATEGORY_CONFIGS = {
     "summarization": {
         "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.1,
-        "max_tokens": 250,
+        "max_tokens": 500,
     },
     "factual": {
         "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.0,
-        "max_tokens": 200,
+        "max_tokens": 400,
     },
     "math": {
         "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.1,
-        "max_tokens": 300,
+        "max_tokens": 800,
     },
     "logic": {
         "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.1,
-        "max_tokens": 250,
+        "max_tokens": 800,
     },
     "code": {
         "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.2,
-        "max_tokens": 400,
+        "max_tokens": 1024,
     },
     "general": {
         "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.1,
-        "max_tokens": 250,
+        "max_tokens": 512,
     },
 }
 
