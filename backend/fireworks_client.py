@@ -16,48 +16,47 @@ client = AsyncOpenAI(
 )
 
 # --- CATEGORY-SPECIFIC CONFIGS ---
-# Per-category system prompts, temperatures, and max_tokens.
-# This is the single biggest accuracy lever: precision prompts beat generic ones.
+# Universal system prompt with safe max_token limits.
 CATEGORY_CONFIGS = {
     "sentiment": {
-        "sys_prompt": "Output Positive, Negative, or Neutral.",
+        "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.0,
-        "max_tokens": 5,
+        "max_tokens": 100,
     },
     "ner": {
-        "sys_prompt": "Extract entities. Output valid JSON.",
+        "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.0,
-        "max_tokens": 80,
+        "max_tokens": 150,
     },
     "summarization": {
-        "sys_prompt": "Summarize in 1 concise sentence.",
+        "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.1,
-        "max_tokens": 50,
+        "max_tokens": 250,
     },
     "factual": {
-        "sys_prompt": "Answer directly in 1 sentence.",
+        "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.0,
-        "max_tokens": 40,
+        "max_tokens": 200,
     },
     "math": {
-        "sys_prompt": "Solve concisely. End with Answer:",
+        "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.1,
-        "max_tokens": 150,
+        "max_tokens": 300,
     },
     "logic": {
-        "sys_prompt": "Solve concisely. End with Answer:",
+        "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.1,
-        "max_tokens": 80,
+        "max_tokens": 250,
     },
     "code": {
-        "sys_prompt": "Output code only. No prose.",
+        "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.2,
-        "max_tokens": 150,
+        "max_tokens": 400,
     },
     "general": {
-        "sys_prompt": "Be concise.",
+        "sys_prompt": "Follow the user's instructions exactly. Be concise but complete.",
         "temperature": 0.1,
-        "max_tokens": 80,
+        "max_tokens": 250,
     },
 }
 
@@ -77,7 +76,6 @@ async def generate_response_api(prompt: str, model: str, category: str = "genera
             {"role": "user", "content": prompt}
         ],
         max_tokens=config["max_tokens"],
-        temperature=config["temperature"],
-        stop=["\n\n", "Note:", "Explanation:", "Here's", "Let me", "I will", "As an AI"]
+        temperature=config["temperature"]
     )
     return response.choices[0].message.content

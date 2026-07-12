@@ -3,16 +3,16 @@ import sys
 import json
 import asyncio
 import argparse
+import traceback
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
-from llama_cpp import Llama
 import traceback
 
 from router import (
-    route_query, LOCAL_MODEL_KEY,
     prune_prompt, determine_category,
-    CHEAP_MODEL
+    CHEAP_MODEL, CODE_MODEL, EXPENSIVE_MODEL
 )
 from fireworks_client import generate_response_api
+import deterministic_solver
 
 # 1. Globals and Semaphores
 local_semaphore = asyncio.Semaphore(1)
@@ -21,6 +21,7 @@ api_semaphore = asyncio.Semaphore(50)
 # Upgrade to 3B model for better accuracy while fitting within the 4GB RAM budget
 LOCAL_MODEL_PATH = "qwen2.5-3b-instruct-q4_k_m.gguf"
 try:
+    from llama_cpp import Llama
     print(f"Loading local model from {LOCAL_MODEL_PATH}...")
     llm = Llama(
         model_path=LOCAL_MODEL_PATH,
@@ -28,25 +29,60 @@ try:
         n_ctx=2048,
         verbose=False
     )
+except ImportError:
+    print(f"Warning: Failed to import llama_cpp. Local model will be disabled.")
+    llm = None
 except Exception as e:
     print(f"Warning: Failed to load local model: {e}")
     llm = None
 
+def validate_answer(answer: str, category: str) -> bool:
+    """Zero-cost heuristic validation to catch truncated or malformed local answers."""
+    if not answer or len(answer.strip()) == 0:
+        return False
+    ans_lower = answer.lower()
+    
+    if category == "sentiment":
+        # Usually sentiment requires short explanation
+        words = len(answer.split())
+        if words < 2: return False
+        return any(k in ans_lower for k in ["positive", "negative", "neutral", "mixed"])
+    if category == "ner":
+        # Simple NER check
+        return any(k in ans_lower for k in ["person", "organization", "location", "date"]) or "{" in answer or "[" in answer
+    if category == "factual":
+        return len(answer.split()) >= 3
+    if category == "summarization":
+        return len(answer.split()) >= 5
+    if category == "math":
+        return any(c.isdigit() for c in answer)
+    if category == "logic":
+        return len(answer.split()) >= 5
+    if category == "code":
+        return any(k in ans_lower for k in ["def ", "return", "function", "class", "import", "print", "var", "let", "const"])
+    return True
+
 def generate_local_response(prompt: str, category: str) -> str:
-    """Synchronous local inference using Llama-cpp."""
+    """Synchronous local inference using Llama-cpp with proper max_tokens."""
     if not llm:
         return ""
     
-    # Aggressively limit max_tokens to prevent timeouts
-    max_tokens = 150
-    if category == "sentiment":
-        max_tokens = 5
-    elif category == "ner":
-        max_tokens = 30
+    # Same safe max_tokens as API
+    max_tokens_map = {
+        "sentiment": 100,
+        "ner": 150,
+        "factual": 200,
+        "summarization": 250,
+        "math": 300,
+        "logic": 250,
+        "code": 400,
+        "general": 250
+    }
+    max_tokens = max_tokens_map.get(category, 250)
         
     response = llm.create_chat_completion(
         messages=[
-            {"role": "system", "content": "You are a helpful assistant. Keep answers concise."},
+            {"role": "system", "content": "Follow the user's instructions exactly. Be concise but complete."},
             {"role": "user", "content": prompt}
         ],
         max_tokens=max_tokens,
@@ -55,75 +91,68 @@ def generate_local_response(prompt: str, category: str) -> str:
     
     return response["choices"][0]["message"]["content"]
 
-async def execute_task(task_id: str, prompt: str, model_name: str, layer: str, category: str) -> dict:
+async def execute_task(task_id: str, prompt: str, category: str) -> dict:
     answer = ""
-    actual_layer = layer
-    actual_model = model_name
+    actual_layer = ""
+    actual_model = ""
     
-    # Pre-parse allowed models for the API cascade
+    # Pre-parse allowed models for the API fallback
     allowed_models_env = os.environ.get("ALLOWED_MODELS", "")
     allowed_models = [m.strip() for m in allowed_models_env.split(",") if m.strip()]
     if not allowed_models:
         allowed_models = [CHEAP_MODEL]
-    
-    if model_name == LOCAL_MODEL_KEY:
-        try:
-            async with local_semaphore:
-                # Wrapped in a 20-second timeout to prevent CPU exhaustion and container death
-                answer = await asyncio.wait_for(asyncio.to_thread(generate_local_response, prompt, category), timeout=20.0)
-                if not answer.strip():
-                    raise ValueError("Local model returned empty string")
-        except Exception as e:
-            print(f"[{task_id}] Local Model Failed ({e}) - Aborting and falling back to Fireworks API.")
-            actual_layer = f"{layer}_fallback"
-            
-            # API Cascade Fallback
-            for fb_model in reversed(allowed_models):
-                actual_model = fb_model
-                try:
-                    async with api_semaphore:
-                        answer = await generate_response_api(prompt, fb_model, category)
-                    break
-                except Exception as fallback_e:
-                    print(f"[{task_id}] API cascade fallback ({fb_model}) failed: {fallback_e}")
-                    answer = "Error: All models failed."
-    else:
-        # Fireworks API Execution with Cascade
-        success = False
-        models_to_try = [model_name] + [m for m in reversed(allowed_models) if m != model_name]
         
-        for try_model in models_to_try:
-            actual_model = try_model
-            try:
-                async with api_semaphore:
-                    answer = await generate_response_api(prompt, try_model, category)
-                success = True
-                break
-            except Exception as e:
-                print(f"[{task_id}] API failed for {try_model}. Error: {e}")
-                actual_layer = f"{layer}_api_cascade_fallback"
-                
-        if not success:
-            print(f"[{task_id}] All API models failed. Falling back to local model desperation...")
-            try:
-                async with local_semaphore:
-                    answer = await asyncio.wait_for(asyncio.to_thread(generate_local_response, prompt, category), timeout=20.0)
-                actual_layer = "local_desperation_fallback"
-                actual_model = LOCAL_MODEL_KEY
-            except Exception as fallback_local_e:
-                print(f"[{task_id}] Desperation local fallback failed: {fallback_local_e}")
-                answer = "Error: All models failed."
+    # Pick the right fallback model
+    fallback_model = CHEAP_MODEL
+    if category == "code":
+        fallback_model = CODE_MODEL
+    elif category in ["math", "logic"]:
+        fallback_model = EXPENSIVE_MODEL
     
-    cost_map = {
-        "c3t-code-bypass": 0.001,
-        "c3t-math-bypass": 0.002,
-        "c3t-fallback": 0.0005,
-    }
-    cost_usd = 0.0 if actual_model == LOCAL_MODEL_KEY else cost_map.get(layer, 0.001)
+    # TIER 0: Deterministic Solver
+    try:
+        det_ans = deterministic_solver.solve(prompt, category)
+        if det_ans is not None:
+            print(f"[{task_id}] Tier 0 (Deterministic) solved successfully.")
+            return {"id": task_id, "answer": det_ans}
+    except Exception as e:
+        print(f"[{task_id}] Tier 0 Deterministic Solver failed: {e}")
+        
+    # TIER 1: Local 3B Model
+    try:
+        async with local_semaphore:
+            # Wrapped in a timeout to prevent CPU exhaustion
+            answer = await asyncio.wait_for(asyncio.to_thread(generate_local_response, prompt, category), timeout=45.0)
+            
+            if validate_answer(answer, category):
+                print(f"[{task_id}] Tier 1 (Local 3B) solved and passed validation.")
+                return {"id": task_id, "answer": answer}
+            else:
+                print(f"[{task_id}] Tier 1 (Local 3B) failed validation. Escalating to Tier 2 API.")
+    except Exception as e:
+        print(f"[{task_id}] Tier 1 (Local 3B) failed execution ({e}). Escalating to Tier 2 API.")
+        
+    # TIER 2: API Fallback
+    success = False
+    models_to_try = [fallback_model] + [m for m in reversed(allowed_models) if m != fallback_model]
+    
+    for try_model in models_to_try:
+        actual_model = try_model
+        try:
+            async with api_semaphore:
+                answer = await generate_response_api(prompt, try_model, category)
+            success = True
+            print(f"[{task_id}] Tier 2 (API Fallback) succeeded via {try_model}.")
+            break
+        except Exception as e:
+            print(f"[{task_id}] API failed for {try_model}. Error: {e}")
+            
+    if not success:
+        print(f"[{task_id}] All models failed. Returning empty/error.")
+        answer = "Error: All models failed."
 
-    print(f"[{task_id}] Routed to {actual_model} via {actual_layer} (Cat: {category}, Cost: ${cost_usd})")
     return {
-        "task_id": task_id, 
+        "id": task_id, 
         "answer": answer
     }
 
@@ -133,7 +162,6 @@ async def main():
     parser.add_argument("--output", type=str, help="Path to output results.json")
     args, unknown = parser.parse_known_args()
 
-    # Heuristic to catch positional arguments if provided
     pos_input = unknown[0] if len(unknown) > 0 and not unknown[0].startswith("-") else None
     pos_output = unknown[1] if len(unknown) > 1 and not unknown[1].startswith("-") else None
 
@@ -152,64 +180,20 @@ async def main():
     with open(input_path, "r") as f:
         tasks = json.load(f)
         
-    print(f"Processing {len(tasks)} tasks via 5-Layer Hybrid Router...")
+    print(f"Processing {len(tasks)} tasks via 3-Tier Local-First Router...")
     
-    # --- PHASE 1: PRE-PROCESSING ---
-    pruned_prompts = []
-    categories = []
-    for task in tasks:
-        prompt = task.get("prompt") or task.get("query") or task.get("task", "")
-        cat = determine_category(prompt)
-        pruned = prune_prompt(prompt, cat)
-        pruned_prompts.append(pruned)
-        categories.append(cat)
-        
-    # Route Queries
     results = [None] * len(tasks)
-    local_tasks = []
-    api_tasks_by_category = {}
     
+    # We execute all tasks sequentially because local model takes up CPU, 
+    # and we don't want API tasks to starve the local model's threads if they run concurrently.
     for i, task in enumerate(tasks):
         task_id = task.get("id") or task.get("task_id")
         orig_prompt = task.get("prompt") or task.get("query") or task.get("task", "")
-        pruned_prompt = pruned_prompts[i]
-        category = categories[i]
-            
-        # 1. Route Query
-        try:
-            model_name, layer, _, cat = route_query(pruned_prompt, category)
-        except Exception as e:
-            print(f"Routing failed for {task_id}: {e}")
-            model_name, layer, cat = LOCAL_MODEL_KEY, "fallback", category
-            
-        task_obj = (i, task_id, pruned_prompt, model_name, layer, cat, orig_prompt)
         
-        # Group tasks for Cache-Aware Sticky Batching
-        if model_name == LOCAL_MODEL_KEY:
-            local_tasks.append(task_obj)
-        else:
-            if cat not in api_tasks_by_category:
-                api_tasks_by_category[cat] = []
-            api_tasks_by_category[cat].append(task_obj)
+        category = determine_category(orig_prompt)
+        pruned_prompt = prune_prompt(orig_prompt)
             
-    # Execute Local Tasks (Serialized to save CPU)
-    if local_tasks:
-        print(f"Executing {len(local_tasks)} local tasks sequentially...")
-        for idx, t_id, p_prompt, m_name, lyr, cat, orig_prompt in local_tasks:
-            results[idx] = await execute_task(t_id, p_prompt, m_name, lyr, cat)
-            
-    # Execute API Tasks by Category (KV Cache Prefix Optimization)
-    for cat, category_tasks in api_tasks_by_category.items():
-        print(f"Executing {len(category_tasks)} API tasks for category: {cat}...")
-        coroutines = []
-        indices = []
-        for idx, t_id, p_prompt, m_name, lyr, c, orig_prompt in category_tasks:
-            coroutines.append(execute_task(t_id, p_prompt, m_name, lyr, c))
-            indices.append(idx)
-            
-        batch_results = await asyncio.gather(*coroutines)
-        for i, res in zip(indices, batch_results):
-            results[i] = res
+        results[i] = await execute_task(task_id, pruned_prompt, category)
             
     # Write output
     print(f"Writing results to {output_path}...")
@@ -217,7 +201,7 @@ async def main():
     with open(output_path, "w") as f:
         json.dump(results, f, indent=2)
     
-    print("Execution Complete! Architecture executed successfully.")
+    print("Execution Complete! 3-Tier Architecture executed successfully.")
 
 if __name__ == "__main__":
     asyncio.run(main())

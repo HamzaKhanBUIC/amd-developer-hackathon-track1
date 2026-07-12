@@ -1,23 +1,5 @@
 import os
 import re
-import numpy as np
-import xgboost as xgb
-from sentence_transformers import SentenceTransformer
-
-# Load models on module import to save time
-try:
-    xgb_model = xgb.XGBClassifier()
-    model_path = os.path.join(os.path.dirname(__file__), "xgboost_router.json")
-    xgb_model.load_model(model_path)
-except Exception as e:
-    print(f"Failed to load XGBoost model: {e}")
-    xgb_model = None
-
-try:
-    embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-except Exception as e:
-    print(f"Failed to load SentenceTransformer: {e}")
-    embedding_model = None
 
 # --- 1. DYNAMIC API MODEL SELECTION ---
 def parse_allowed_models():
@@ -58,25 +40,13 @@ def parse_allowed_models():
 
 CHEAP_MODEL, CODE_MODEL, EXPENSIVE_MODEL = parse_allowed_models()
 
-LOCAL_MODEL_KEY = "local" 
-
-# --- 3. CONDITIONAL TOKEN PRUNING ---
-def prune_prompt(prompt: str, category: str) -> str:
-    """Strips whitespace/JSON formatting for text tasks to save 10-30% tokens."""
-    if category in ["math", "logic", "code"]:
-        return prompt # DO NOT PRUNE CODE/MATH
-    
-    # Prune extra newlines and spaces
-    pruned = re.sub(r'\s*\n\s*', '\n', prompt)
-    pruned = re.sub(r' {2,}', ' ', pruned)
-    return pruned.strip()
-
-# --- 4. CATEGORY IDENTIFICATION ---
+# --- 2. CATEGORY IDENTIFICATION ---
 def determine_category(prompt: str) -> str:
     pl = prompt.lower()
     if any(k in pl for k in ["code", "python", "javascript", "typescript", "rust", "c++", "java", "debug", "function", "algorithm", "script", "program", "class", "def ", "implement"]):
         return "code"
-    if any(k in pl for k in ["calculate", "equation", "arithmetic", "algebra", "geometry", "integral", "derivative", "compute", "math", "formula", "numeric"]):
+    if any(k in pl for k in ["calculate", "equation", "arithmetic", "algebra", "geometry", "integral", "derivative", "compute", "math", "formula", "numeric", "solve", "how many"]):
+        # Note: Added 'solve' and 'how many' for better math coverage
         return "math"
     if any(k in pl for k in ["logic", "puzzle", "riddle", "theorem", "prove", "deduce", "infer", "syllogism", "if.*then", "all.*are"]):
         return "logic"
@@ -86,38 +56,10 @@ def determine_category(prompt: str) -> str:
         return "summarization"
     if any(k in pl for k in ["extract", "entity", "ner", "named", "identify", "list.*person", "list.*organization", "list.*location"]):
         return "ner"
-    if any(k in pl for k in ["what is", "who is", "when did", "where is", "define", "capital of", "how many", "which country", "year was"]):
+    if any(k in pl for k in ["what is", "who is", "when did", "where is", "define", "capital of", "which country", "year was"]):
         return "factual"
     return "general"
 
-def route_query(pruned_prompt: str, category: str, emb: np.ndarray = None) -> tuple[str, str, str, str]:
-    """
-    Returns (model_name, layer_used, pruned_prompt, category)
-    """
-    # 1. Hard limits: Math, Logic, and Code MUST go to Fireworks
-    if category == "code":
-        return (CODE_MODEL, "rule-code-api", pruned_prompt, category)
-    if category in ["math", "logic"]:
-        return (EXPENSIVE_MODEL, "rule-math-logic-api", pruned_prompt, category)
-    
-    # 2. Easy categories can go to Local Model, IF XGBoost confidence is high
-    if category in ["factual", "sentiment", "summarization", "ner"]:
-        # Use XGBoost if available to determine if it's truly an "easy" task
-        if xgb_model is not None and embedding_model is not None:
-            if emb is None:
-                emb = embedding_model.encode([pruned_prompt], convert_to_numpy=True)
-            
-            # Predict probability of being class 0 (Easy)
-            probs = xgb_model.predict_proba(emb)
-            prob_easy = probs[0][0]
-            
-            if prob_easy >= 0.75:
-                return (LOCAL_MODEL_KEY, "xgboost-local-routing", pruned_prompt, category)
-            else:
-                return (CHEAP_MODEL, "xgboost-api-fallback", pruned_prompt, category)
-        else:
-            # If models fail to load, default to local for these categories (as requested by user's "local-first" track 1 rule)
-            return (LOCAL_MODEL_KEY, "rule-easy-local-fallback", pruned_prompt, category)
-    
-    # Catch-all
-    return (CHEAP_MODEL, "rule-general-api", pruned_prompt, category)
+def prune_prompt(prompt: str) -> str:
+    """Strips outer whitespace only. No destructive token pruning."""
+    return prompt.strip()
