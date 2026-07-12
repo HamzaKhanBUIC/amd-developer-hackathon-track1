@@ -5,7 +5,6 @@ import asyncio
 import argparse
 import traceback
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
-import traceback
 
 from router import (
     prune_prompt, determine_category,
@@ -114,7 +113,7 @@ async def execute_task(task_id: str, prompt: str, category: str) -> dict:
         det_ans = deterministic_solver.solve(prompt, category)
         if det_ans is not None:
             print(f"[{task_id}] Tier 0 (Deterministic) solved successfully.")
-            return {"id": task_id, "answer": det_ans}
+            return {"task_id": task_id, "answer": det_ans}
     except Exception as e:
         print(f"[{task_id}] Tier 0 Deterministic Solver failed: {e}")
         
@@ -126,7 +125,7 @@ async def execute_task(task_id: str, prompt: str, category: str) -> dict:
             
             if validate_answer(answer, category):
                 print(f"[{task_id}] Tier 1 (Local 3B) solved and passed validation.")
-                return {"id": task_id, "answer": answer}
+                return {"task_id": task_id, "answer": answer}
             else:
                 print(f"[{task_id}] Tier 1 (Local 3B) failed validation. Escalating to Tier 2 API.")
     except Exception as e:
@@ -152,7 +151,7 @@ async def execute_task(task_id: str, prompt: str, category: str) -> dict:
         answer = "Error: All models failed."
 
     return {
-        "id": task_id, 
+        "task_id": task_id, 
         "answer": answer
     }
 
