@@ -195,6 +195,10 @@ async def main():
         
         category = determine_category(orig_prompt)
         pruned_prompt = prune_prompt(orig_prompt)
+        
+        # Protect against Context Window Exceeded errors on malicious or massive inputs
+        if len(pruned_prompt) > 64000:
+            pruned_prompt = pruned_prompt[:64000] + "\n...[Truncated due to length limit]"
             
         results[i] = await execute_task(task_id, pruned_prompt, category)
             
