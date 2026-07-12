@@ -190,8 +190,8 @@ async def main():
     # We execute all tasks sequentially because local model takes up CPU, 
     # and we don't want API tasks to starve the local model's threads if they run concurrently.
     for i, task in enumerate(tasks):
-        task_id = task.get("id") or task.get("task_id")
-        orig_prompt = task.get("prompt") or task.get("query") or task.get("task", "")
+        task_id = str(task.get("id") or task.get("task_id") or f"task_{i}")
+        orig_prompt = str(task.get("prompt") or task.get("query") or task.get("task") or "")
         
         category = determine_category(orig_prompt)
         pruned_prompt = prune_prompt(orig_prompt)
