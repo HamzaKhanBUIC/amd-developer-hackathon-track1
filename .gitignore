@@ -18,3 +18,6 @@ skills.json
 node_modules/
 __pycache__/
 *.pyc
+
+*.gguf
+*.pkl
