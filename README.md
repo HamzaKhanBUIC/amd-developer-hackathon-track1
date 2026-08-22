@@ -3,20 +3,20 @@
 This project is an advanced AI Agent Router built for **Track 1** of the AMD Developer Hackathon.
 
 Our goal is simple: **Maximize Accuracy while Minimizing Token Cost**. 
-We achieve this through a highly optimized, 2-tier routing architecture that aggressively answers tasks using zero-token local execution whenever possible, and only escalates to expensive API models when strictly necessary for hard reasoning tasks.
+We achieve this through a highly optimized, 2-tier routing architecture that answers tasks using zero-token local execution whenever possible, and only escalates to expensive API models when strictly necessary for hard reasoning tasks.
 
 ## The 2-Tier Routing Architecture
 
 1. **Layer 1: XGBoost Category Gating**
    - **Cost:** $0.00
-   - We run a tiny offline XGBoost classifier over text embeddings to detect the task Category. 
-   - **Math, Logic, Code** -> Instantly bypassed to the Fireworks API. Small models hallucinate these.
+   - We run a lightweight offline XGBoost classifier over text embeddings to detect the task Category. 
+   - **Math, Logic, Code** -> Instantly routed to the Fireworks API.
    - **Sentiment, Factual, Summarization, NER** -> Routed to the local Qwen 3B model (if confidence > 75%).
 
-2. **Layer 2: Extreme API Compression & Batching**
-   - **Cost:** API rates (Hyper-Optimized)
-   - When hitting the Fireworks API for hard tasks, we compress system prompts down to 3-5 word micro-instructions (e.g. "Solve concisely.").
-   - We inject strict `max_tokens` ceilings and aggressive `stop` sequences to prevent token "yapping" and over-generation.
+2. **Layer 2: API Compression & Batching**
+   - **Cost:** API rates (Optimized)
+   - When hitting the Fireworks API for complex tasks, we compress system prompts down to concise micro-instructions (e.g., "Solve concisely.").
+   - We utilize strict `max_tokens` ceilings and standard `stop` sequences to prevent over-generation.
    - API tasks are batched sequentially by category. We parse `ALLOWED_MODELS` to pick the smartest model for hard tasks.
 
 ## Environment & Constraints Compliance
