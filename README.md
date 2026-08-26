@@ -1,37 +1,110 @@
-# AMD Developer Hackathon: Zero-Token API Router
+# AMD Developer Hackathon: Cost-Optimized AI Model Router
 
-This project is an advanced AI Agent Router built for **Track 1** of the AMD Developer Hackathon.
+> Two-tier model routing engine combining offline XGBoost classification, local GGUF inference, and cloud API fallback to optimize execution cost and inference latency.
 
-Our goal is simple: **Maximize Accuracy while Minimizing Token Cost**. 
-We achieve this through a highly optimized, 2-tier routing architecture that answers tasks using zero-token local execution whenever possible, and only escalates to expensive API models when strictly necessary for hard reasoning tasks.
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg?logo=python)](https://python.org/)
+[![Docker](https://img.shields.io/badge/Container-Docker-2496ED.svg?logo=docker)](Dockerfile)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## The 2-Tier Routing Architecture
+---
 
-1. **Layer 1: XGBoost Category Gating**
-   - **Cost:** $0.00
-   - We run a lightweight offline XGBoost classifier over text embeddings to detect the task Category. 
-   - **Math, Logic, Code** -> Instantly routed to the Fireworks API.
-   - **Sentiment, Factual, Summarization, NER** -> Routed to the local Qwen 3B model (if confidence > 75%).
+## Overview
 
-2. **Layer 2: API Compression & Batching**
-   - **Cost:** API rates (Optimized)
-   - When hitting the Fireworks API for complex tasks, we compress system prompts down to concise micro-instructions (e.g., "Solve concisely.").
-   - We utilize strict `max_tokens` ceilings and standard `stop` sequences to prevent over-generation.
-   - API tasks are batched sequentially by category. We parse `ALLOWED_MODELS` to pick the smartest model for hard tasks.
+Running large language model inference across high-volume task queues creates significant API cost and latency bottlenecks. Many lightweight classification, sentiment, and structured extraction queries do not require multi-billion parameter cloud models.
 
-## Environment & Constraints Compliance
-- **Local Model Constraints:** The bundled `Qwen 2.5 3B GGUF` is strictly hardcoded to `n_threads=2` to ensure the hackathon's **2 vCPU limit** is never breached.
-- **Memory Safety:** Local execution is serialized using a `Semaphore(1)` to guarantee it runs safely within the **4GB RAM limit**.
-- **Execution Stability:** Hardened with explicit API timeouts to guarantee we never fail the **10-minute maximum execution window**.
+This project implements a **two-tier cost-optimized model routing engine**:
+1. **Tier 1 (Offline Routing & Local Inference)**: Evaluates task embeddings using an offline XGBoost classifier. Tasks with high confidence and low complexity (sentiment, factual lookups, structured extraction) run locally on a quantized Qwen-2.5 3B GGUF model ($0.00 API cost).
+2. **Tier 2 (Cloud Escalation & Compression)**: Tasks requiring complex mathematical reasoning, code execution, or multi-step logic are dynamically routed to cloud LLM providers (e.g. Fireworks API) with compressed system prompts and strict token ceilings.
 
-## Current Project Status
-- **Backend:** 100% Complete. The routing engine and fallback logic are fully implemented in Python and tested to be robust against 404s, rate limits, and hang conditions.
-- **Models:** Configured to read `ALLOWED_MODELS` from the environment dynamically as required by the hackathon organizers. 
-- **Output Validation:** Output is strictly compliant with `[{"task_id": "...", "answer": "..."}]`. CRLF bash execution bugs pre-fixed.
+---
 
-## How to Run (Headless Grading Simulation)
+## Routing Architecture
 
-1. Clone this repository.
-2. Build the docker image: `docker build -t amd-router .`
-3. Run it via Docker mapping the input/output volumes as specified by the grading harness. 
-*(Alternatively, run `python judge_evaluator.py` locally to simulate the 2-tier logic and token savings).*
+```mermaid
+graph TD
+    A[Inbound Task Query] --> B[Text Embedding Extraction]
+    B --> C{XGBoost Task Classifier}
+    
+    C -->|Sentiment / Summarization / NER| D[Confidence >= 75%?]
+    D -->|Yes| E[Local Qwen-2.5 3B GGUF Model]
+    D -->|No| F[Cloud API Escalation]
+    
+    C -->|Math / Code / Multi-Step Logic| F
+    
+    E --> G[Standardized JSON Output]
+    F -->|System Prompt Compression + Ceiling| H[Cloud Model Inference]
+    H --> G
+```
+
+---
+
+## Resource Constraints & Concurrency Model
+
+- **CPU Ceiling**: Configured for `n_threads=2` to respect strict vCPU limits.
+- **Memory Management**: Serializes local GGUF execution with an asynchronous `Semaphore(1)` to operate safely within a 4 GB RAM envelope.
+- **Timeout Isolation**: Enforces explicit per-task HTTP timeouts to prevent queue stalls during cloud API outages.
+
+---
+
+## Repository Structure
+
+```
+.
+├── backend/                  # Routing engine and provider client logic
+├── frontend/                 # Local evaluation UI
+├── input/                    # Task queue inputs
+├── output/                   # Formatted evaluation outputs
+├── judge_evaluator.py        # Automated test harness and routing simulator
+├── Dockerfile                # Container build specification
+├── docker-compose.yml        # Multi-service test environment
+└── README.md
+```
+
+---
+
+## Getting Started
+
+### Prerequisites
+- Python 3.10 or higher
+- Docker
+
+### Running Locally
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/HamzaKhanBUIC/amd-developer-hackathon-track1.git
+   cd amd-developer-hackathon-track1
+   ```
+
+2. **Run the local evaluation simulation**:
+   ```bash
+   python judge_evaluator.py
+   ```
+
+3. **Build and test with Docker**:
+   ```bash
+   docker build -t amd-router .
+   docker run --rm -v $(pwd)/input:/app/input -v $(pwd)/output:/app/output amd-router
+   ```
+
+---
+
+## Output Format
+
+The router outputs strict standardized JSON:
+```json
+[
+  {
+    "task_id": "task-001",
+    "answer": "Extracted response content",
+    "tier_used": "local_gguf",
+    "execution_time_ms": 142
+  }
+]
+```
+
+---
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
